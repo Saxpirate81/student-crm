@@ -1,8 +1,21 @@
 @import "tailwindcss";
 
+@variant dark (&:where(.dark, .dark *));
+
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #f8fafc;
+  --foreground: #0f172a;
+  --muted: #64748b;
+  --card: rgba(255, 255, 255, 0.72);
+  --card-border: rgba(15, 23, 42, 0.08);
+}
+
+.dark {
+  --background: #020617;
+  --foreground: #f8fafc;
+  --muted: #94a3b8;
+  --card: rgba(15, 23, 42, 0.55);
+  --card-border: rgba(248, 250, 252, 0.1);
 }
 
 @theme inline {
@@ -12,15 +25,158 @@
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+* {
+  box-sizing: border-box;
 }
 
 body {
+  margin: 0;
+  min-height: 100vh;
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-geist-sans), Arial, Helvetica, sans-serif;
+  transition:
+    background-color 0.25s ease,
+    color 0.25s ease;
+}
+
+.dark body {
+  background-image:
+    radial-gradient(ellipse 120% 80% at 50% -30%, rgba(99, 102, 241, 0.22), transparent 55%),
+    radial-gradient(ellipse 90% 60% at 100% 0%, rgba(14, 165, 233, 0.12), transparent 45%),
+    radial-gradient(ellipse 70% 50% at 0% 100%, rgba(168, 85, 247, 0.1), transparent 40%);
+}
+
+.ui-input,
+.ui-select,
+.ui-textarea {
+  border: 1px solid rgb(203 213 225 / 0.9);
+  background: rgb(255 255 255 / 0.92);
+  color: rgb(30 41 59);
+  outline: none;
+  transition:
+    border-color 0.16s ease,
+    box-shadow 0.16s ease,
+    background-color 0.16s ease;
+}
+
+.dark .ui-input,
+.dark .ui-select,
+.dark .ui-textarea {
+  border-color: rgb(255 255 255 / 0.1);
+  background: rgb(2 6 23 / 0.5);
+  color: rgb(248 250 252);
+}
+
+.ui-input:focus-visible,
+.ui-select:focus-visible,
+.ui-textarea:focus-visible {
+  border-color: rgb(99 102 241 / 0.9);
+  box-shadow: 0 0 0 2px rgb(99 102 241 / 0.35);
+}
+
+.ui-input:disabled,
+.ui-select:disabled,
+.ui-textarea:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.ui-button-primary,
+.ui-button-secondary,
+.ui-button-danger {
+  transition:
+    background-color 0.16s ease,
+    border-color 0.16s ease,
+    color 0.16s ease,
+    box-shadow 0.16s ease;
+}
+
+.ui-button-primary {
+  background: rgb(79 70 229);
+  color: rgb(255 255 255);
+}
+
+.ui-button-primary:hover {
+  background: rgb(99 102 241);
+}
+
+.ui-button-primary:focus-visible,
+.ui-button-secondary:focus-visible,
+.ui-button-danger:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px rgb(99 102 241 / 0.35);
+}
+
+.ui-button-primary:disabled,
+.ui-button-secondary:disabled,
+.ui-button-danger:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.ui-button-secondary {
+  border: 1px solid rgb(203 213 225 / 0.9);
+  background: rgb(255 255 255 / 0.92);
+  color: rgb(51 65 85);
+}
+
+.ui-button-secondary:hover {
+  border-color: rgb(148 163 184);
+  background: rgb(241 245 249);
+}
+
+.dark .ui-button-secondary {
+  border-color: rgb(255 255 255 / 0.15);
+  background: rgb(255 255 255 / 0.05);
+  color: rgb(241 245 249);
+}
+
+.dark .ui-button-secondary:hover {
+  border-color: rgb(255 255 255 / 0.25);
+  background: rgb(255 255 255 / 0.1);
+}
+
+.ui-button-danger {
+  background: rgb(220 38 38);
+  color: rgb(255 255 255);
+}
+
+.ui-button-danger:hover {
+  background: rgb(239 68 68);
+}
+
+@keyframes milestone-pop {
+  0% {
+    opacity: 0;
+    transform: translateY(12px) scale(0.96);
+  }
+  12% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+  78% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-8px) scale(0.98);
+  }
+}
+
+@keyframes watermark-tone-cycle {
+  0% {
+    filter: brightness(0) invert(1);
+  }
+  50% {
+    filter: none;
+  }
+  100% {
+    filter: brightness(0) invert(1);
+  }
+}
+
+.animate-watermark-tone {
+  animation: watermark-tone-cycle 8s ease-in-out infinite;
 }

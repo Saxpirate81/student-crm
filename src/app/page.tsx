@@ -1,103 +1,82 @@
-import Image from "next/image";
+import Link from "next/link";
+
+const roles = [
+  {
+    href: "/student",
+    title: "Student View",
+    detail: "Netflix-style lesson thumbnails, program tabs, and video detail with metronome.",
+  },
+  {
+    href: "/parent",
+    title: "Parent View",
+    detail: "Read-only progress and video feed for the selected child profile.",
+  },
+  {
+    href: "/instructor",
+    title: "Instructor View",
+    detail: "Upload to student profile, archive videos, and track assigned media.",
+  },
+  {
+    href: "/admin",
+    title: "Admin View",
+    detail: "Upload, archive, and delete controls for command-center operations.",
+  },
+];
 
 export default function Home() {
   return (
-    <div className="grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20 font-[family-name:var(--font-geist-sans)]">
-      <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="list-inside list-decimal text-sm/6 text-center sm:text-left font-[family-name:var(--font-geist-mono)]">
-          <li className="mb-2 tracking-[-.01em]">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] px-1 py-0.5 rounded font-[family-name:var(--font-geist-mono)] font-semibold">
-              src/app/page.tsx
-            </code>
-            .
-          </li>
-          <li className="tracking-[-.01em]">
-            Save and see your changes instantly.
-          </li>
-        </ol>
-
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
+    <div className="space-y-6">
+      <section className="flex flex-col gap-3 rounded-2xl border border-indigo-200/80 bg-indigo-50/90 p-5 sm:flex-row sm:items-center sm:justify-between dark:border-indigo-500/25 dark:bg-indigo-950/40">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-wider text-indigo-700 dark:text-indigo-300">
+            Mock accounts
+          </p>
+          <p className="mt-1 text-sm text-slate-700 dark:text-slate-300">
+            Sign up a household (organization id + parent email + family screen names) or log in to drive parent/student
+            views with your mock session.
+          </p>
+        </div>
+        <div className="flex shrink-0 flex-wrap gap-2">
           <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:w-auto"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
+            href="/auth/login"
+            className="inline-flex items-center justify-center rounded-full border border-indigo-400/60 bg-white/80 px-4 py-2 text-sm font-bold text-indigo-800 shadow-sm transition hover:bg-white dark:border-indigo-400/40 dark:bg-slate-900/60 dark:text-indigo-200 dark:hover:bg-slate-900"
           >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
+            Log in
           </a>
           <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 w-full sm:w-auto md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
+            href="/auth/signup"
+            className="inline-flex items-center justify-center rounded-full bg-indigo-600 px-4 py-2 text-sm font-bold text-white shadow-sm transition hover:bg-indigo-500 dark:bg-indigo-500 dark:hover:bg-indigo-400"
           >
-            Read our docs
+            Sign up
           </a>
         </div>
-      </main>
-      <footer className="row-start-3 flex gap-[24px] flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
+      </section>
+
+      <section className="rounded-2xl border border-indigo-200/80 bg-indigo-50/90 p-5 dark:border-indigo-500/25 dark:bg-indigo-950/40">
+        <p className="text-xs font-semibold uppercase tracking-wider text-indigo-700 dark:text-indigo-300">
+          Build Mode: Mock Data
+        </p>
+        <h1 className="mt-1 text-2xl font-black text-slate-900 dark:text-white">
+          Real School Student Experience Prototype
+        </h1>
+        <p className="mt-2 max-w-3xl text-sm text-slate-700 dark:text-slate-300">
+          This scaffold uses local fixture data and localStorage persistence so your team can test UI and
+          workflow before wiring Supabase and live datasets.
+        </p>
+      </section>
+
+      <section className="grid gap-4 md:grid-cols-2">
+        {roles.map((role) => (
+          <Link
+            key={role.href}
+            href={role.href}
+            className="rounded-2xl border border-slate-200/90 bg-white/90 p-5 shadow-sm transition hover:-translate-y-0.5 hover:border-indigo-300 dark:border-white/10 dark:bg-slate-900/50 dark:hover:border-indigo-400/50"
+          >
+            <h2 className="text-lg font-bold text-slate-900 dark:text-white">{role.title}</h2>
+            <p className="mt-2 text-sm text-slate-600 dark:text-slate-400">{role.detail}</p>
+          </Link>
+        ))}
+      </section>
     </div>
   );
 }

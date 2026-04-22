@@ -1,0 +1,74 @@
+REAL SCHOOL APP — READ THIS FIRST
+==================================
+
+RUN FROM CURSOR WITHOUT TYPING
+------------------------------
+Open the file **HOW_TO_RUN_IN_CURSOR.txt** in the **Student CRM** folder
+(one level above **web**). It explains: Cursor menu **Terminal → Run Task…**
+and you pick **Start school app** from the list — no commands to type.
+
+
+YOU CAN IGNORE CURSOR FOR RUNNING THE APP
+-----------------------------------------
+You do NOT need to type "npm run dev" or know what a "dev server" is.
+
+The normal way to run the website is only Finder + two files:
+
+  1) Double-click:  Rebuild Real School.command   (only when something is broken)
+  2) Double-click:  Start Real School.command       (every time you want to use the site)
+
+That is all. Use Safari or Chrome at the address the window shows (usually
+http://127.0.0.1:3000).
+
+
+FIRST-TIME START
+----------------
+1. Finder → Student CRM → web
+2. Double-click "Start Real School.command"
+3. If macOS blocks it: right-click the file → Open → Open again
+4. Wait until the window says it is starting, then use the site in your browser
+
+
+STOP THE APP
+------------
+Close the black window that opened when you started the app
+(or click in it and press Control and C at the same time).
+
+
+WHEN THE SITE LOOKS BROKEN (500, blank, weird errors)
+-----------------------------------------------------
+Do NOT worry about what the error "means."
+
+1. Close any black Terminal windows that might still be open from before
+   (including one from Cursor at the bottom of the screen).
+2. Double-click:  Rebuild Real School.command   (wait until it says it is done)
+3. Double-click:  Start Real School.command
+4. In Safari or Chrome: close every old tab for this site, OR use a Private /
+   Incognito window, then open the http address again.
+   (Old tabs sometimes mix "old" and "new" pieces of the site and cause 500 errors.)
+
+
+IF SOMEONE TOLD YOU TO USE CURSOR'S TERMINAL ANYWAY
+---------------------------------------------------
+Only do this if you are already using Cursor and a black "Terminal" panel
+at the bottom of the screen.
+
+  • Click inside that black area.
+  • Press Control and C together once (this stops the old server).
+  • Open a new terminal line (little + on the terminal tab, or menu Terminal → New Terminal).
+  • Type this exactly, then press Enter:
+
+        npm run dev
+
+  • If the site is still broken, type this exactly, then press Enter:
+
+        npm run dev:clean
+
+If that feels confusing, skip it — use Rebuild + Start in Finder instead.
+
+
+OTHER TIPS
+----------
+• Only one copy of the app should run at a time (one black window).
+• Install Node.js (LTS) from https://nodejs.org if the computer says "npm" was not found.
+• Restart the Mac if nothing else helps.
