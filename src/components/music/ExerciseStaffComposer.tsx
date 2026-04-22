@@ -64,43 +64,19 @@ function toVexKey(pitch: string): { key: string; accidental: "#" | "b" | null } 
   return { key: `${letter}/${match[3]}`, accidental };
 }
 
-function beatsToVexDuration(beats: number, triplet: boolean): string {
-  let base = "q";
-  if (beats <= 0.26) base = "16";
-  else if (beats <= 0.51) base = "8";
-  else if (beats <= 1.01) base = "q";
-  else if (beats <= 2.01) base = "h";
-  else base = "w";
-  return triplet && base !== "w" ? `${base}t` : base;
-}
-
-function toRenderableMeasureEvents(measure: Measure): MeasureEvent[] {
-  const sorted = [...measure].sort((a, b) => a.startStep - b.startStep);
-  const expanded: MeasureEvent[] = [];
-  let cursor = 0;
-  sorted.forEach((event, idx) => {
-    if (event.startStep > cursor) {
-      expanded.push({
-        id: `gap-${idx}-${cursor}`,
-        pitch: "rest",
-        startStep: cursor,
-        durationSteps: event.startStep - cursor,
-        triplet: false,
-      });
-    }
-    expanded.push(event);
-    cursor = event.startStep + event.durationSteps;
-  });
-  if (cursor < TOTAL_STEPS) {
-    expanded.push({
-      id: `tail-${cursor}`,
-      pitch: "rest",
-      startStep: cursor,
-      durationSteps: TOTAL_STEPS - cursor,
-      triplet: false,
-    });
-  }
-  return expanded.filter((event) => event.durationSteps > 0);
+function stepsToVexDuration(steps: number): "32" | "16" | "8" | "q" | "h" | "w" {
+  const durationBySteps: ReadonlyArray<{ steps: number; duration: "32" | "16" | "8" | "q" | "h" | "w" }> = [
+    { steps: 192, duration: "w" },
+    { steps: 96, duration: "h" },
+    { steps: 48, duration: "q" },
+    { steps: 24, duration: "8" },
+    { steps: 12, duration: "16" },
+    { steps: 6, duration: "32" },
+  ];
+  const closest = durationBySteps.reduce((best, candidate) =>
+    Math.abs(candidate.steps - steps) < Math.abs(best.steps - steps) ? candidate : best,
+  );
+  return closest.duration;
 }
 
 function clamp(value: number, min: number, max: number): number {
@@ -147,10 +123,10 @@ function NotationMeasureCanvas({ measure, showHeader }: NotationMeasureCanvasPro
     }
     stave.setContext(context).draw();
 
-    const renderableEvents = toRenderableMeasureEvents(measure);
-    const staveNotes = renderableEvents
+    const orderedEvents = [...measure].sort((a, b) => a.startStep - b.startStep);
+    const staveNotes = orderedEvents
       .map((event) => {
-        const duration = beatsToVexDuration(event.durationSteps / STEPS_PER_BEAT, event.triplet);
+        const duration = stepsToVexDuration(event.durationSteps);
         if (event.pitch.toLowerCase() === "rest") {
           return new StaveNote({
             keys: ["b/4"],
@@ -176,9 +152,14 @@ function NotationMeasureCanvas({ measure, showHeader }: NotationMeasureCanvasPro
       numBeats: MEASURE_BEATS,
       beatValue: 4,
     });
+    voice.setStrict(false);
     voice.addTickables(staveNotes);
-    new Formatter().joinVoices([voice]).format([voice], showHeader ? 230 : 280);
-    voice.draw(context, stave);
+    try {
+      new Formatter().joinVoices([voice]).format([voice], showHeader ? 230 : 280);
+      voice.draw(context, stave);
+    } catch {
+      // Prevent renderer exceptions from crashing the composer.
+    }
   }, [measure, showHeader]);
 
   return <div ref={containerRef} className="absolute inset-0" />;
