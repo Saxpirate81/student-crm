@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useParams, usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo } from "react";
+import { ExerciseCard } from "@/components/music/ExerciseCard";
 import { NetflixScrollRow } from "@/components/student/NetflixScrollRow";
 import { RailVideoPoster } from "@/components/student/RailVideoPoster";
 import { StudentVideoTheater } from "@/components/student/StudentVideoTheater";
@@ -43,7 +44,7 @@ export function LessonStreamingView() {
     return repository.getLesson(lessonId);
   }, [repository, lessonId, version]);
 
-  const { forThisLesson, neighborDedup, general, student, chronLessons } = useMemo(() => {
+  const { forThisLesson, neighborDedup, general, student, chronLessons, lessonExercises, generalExercises } = useMemo(() => {
     void version;
     if (!lesson) {
       return {
@@ -52,6 +53,8 @@ export function LessonStreamingView() {
         general: [] as StudentVideo[],
         student: undefined,
         chronLessons: [] as LessonSummary[],
+        lessonExercises: [],
+        generalExercises: [],
       };
     }
     const s = repository.getStudent(lesson.studentCrmId);
@@ -60,7 +63,19 @@ export function LessonStreamingView() {
     );
     const all = repository.listVideosForStudent(lesson.studentCrmId);
     const parts = partitionLessonVideos(all, lesson, chron);
-    return { ...parts, student: s, chronLessons: chron };
+    const lessonExercisesData = repository.listExercisesForStudent(lesson.studentCrmId, {
+      lessonId: lesson.id,
+    });
+    const generalExercisesData = repository
+      .listExercisesForStudent(lesson.studentCrmId)
+      .filter((exercise) => exercise.lessonId == null);
+    return {
+      ...parts,
+      student: s,
+      chronLessons: chron,
+      lessonExercises: lessonExercisesData,
+      generalExercises: generalExercisesData,
+    };
   }, [lesson, repository, version]);
 
   const selectedVideo = useMemo(() => {
@@ -213,6 +228,27 @@ export function LessonStreamingView() {
               />
             ))}
           </NetflixScrollRow>
+        ) : null}
+
+        {lessonExercises.length > 0 || generalExercises.length > 0 ? (
+          <section className="pt-8 md:pt-10">
+            <div className="mb-3">
+              <h2 className="text-base font-semibold tracking-tight text-slate-900 dark:text-white md:text-lg">
+                Practice Exercises
+              </h2>
+              <p className="mt-0.5 max-w-2xl text-xs font-medium leading-relaxed text-slate-500 dark:text-zinc-400 md:text-sm">
+                Notation drills assigned by your instructor. Hit play to hear the selected instrument.
+              </p>
+            </div>
+            <div className="grid gap-3 md:grid-cols-2">
+              {lessonExercises.map((exercise) => (
+                <ExerciseCard key={exercise.id} exercise={exercise} />
+              ))}
+              {generalExercises.map((exercise) => (
+                <ExerciseCard key={exercise.id} exercise={exercise} />
+              ))}
+            </div>
+          </section>
         ) : null}
 
         {chronLessons.length > 1 ? (

@@ -1,6 +1,7 @@
 import type {
   LessonSummary,
   MediaCategory,
+  NotationExercise,
   StudentProfile,
   StudentVideo,
 } from "@/lib/domain/types";
@@ -147,5 +148,44 @@ export const MOCK_VIDEOS: StudentVideo[] = [
     createdAt: "2026-03-01T11:00:00.000Z",
     archivedAt: "2026-03-15T12:00:00.000Z",
     deletedAt: null,
+  },
+];
+
+export const MOCK_EXERCISES: NotationExercise[] = [
+  {
+    id: "ex-alex-12-1",
+    studentCrmId: "crm-alex",
+    lessonId: "les-12",
+    title: "Groove pickup in 4/4",
+    instrument: "guitar",
+    tempoBpm: 84,
+    notes: [
+      { id: "n1", pitch: "E3", beats: 1 },
+      { id: "n2", pitch: "G3", beats: 1 },
+      { id: "n3", pitch: "A3", beats: 1 },
+      { id: "n4", pitch: "B3", beats: 1 },
+      { id: "n5", pitch: "D4", beats: 2 },
+      { id: "n6", pitch: "B3", beats: 2 },
+    ],
+    createdByInstructorId: "instr-morgan",
+    createdAt: "2026-04-21T10:15:00.000Z",
+  },
+  {
+    id: "ex-sam-5-1",
+    studentCrmId: "crm-sam",
+    lessonId: "les-sam-5",
+    title: "Autumn Leaves guide tones",
+    instrument: "piano",
+    tempoBpm: 76,
+    notes: [
+      { id: "s1", pitch: "A3", beats: 1 },
+      { id: "s2", pitch: "C4", beats: 1 },
+      { id: "s3", pitch: "E4", beats: 2 },
+      { id: "s4", pitch: "G4", beats: 1 },
+      { id: "s5", pitch: "F4", beats: 1 },
+      { id: "s6", pitch: "E4", beats: 2 },
+    ],
+    createdByInstructorId: "instr-morgan",
+    createdAt: "2026-04-21T11:00:00.000Z",
   },
 ];

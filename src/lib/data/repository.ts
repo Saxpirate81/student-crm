@@ -1,8 +1,11 @@
 import type {
   AppRole,
+  ExerciseNote,
   LessonSummary,
+  MusicInstrument,
   MetronomeSound,
   MediaCategory,
+  NotationExercise,
   ProgramType,
   StudentProfile,
   StudentVideo,
@@ -25,6 +28,20 @@ export type AddVideoInput = {
   thumbnailUrl: string;
   durationSec: number;
   uploaderRole: UploaderRole;
+};
+
+export type ListExercisesOptions = {
+  lessonId?: string;
+};
+
+export type AddExerciseInput = {
+  studentCrmId: string;
+  lessonId: string | null;
+  title: string;
+  instrument: MusicInstrument;
+  tempoBpm: number;
+  notes: ExerciseNote[];
+  createdByInstructorId: string;
 };
 
 export const DEFAULT_SETTINGS: VideoPlaybackSettings = {
@@ -83,6 +100,8 @@ export type AppRepository = {
   updateUserPreferences(userKey: string, patch: Partial<UserPreferences>): void;
   /** Appends a household-created student profile (mock CRM) persisted with mock state. */
   appendMockStudent(student: StudentProfile): void;
+  listExercisesForStudent(crmId: string, opts?: ListExercisesOptions): NotationExercise[];
+  addExercise(input: AddExerciseInput): NotationExercise;
 };
 
 export const MOCK_USER_KEYS: Record<AppRole, string> = {

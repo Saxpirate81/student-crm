@@ -10,6 +10,7 @@ import {
 import type { StudentProfile, UserPreferences, VideoPlaybackSettings } from "@/lib/domain/types";
 import {
   MOCK_CATEGORIES,
+  MOCK_EXERCISES,
   MOCK_LESSONS,
   MOCK_STUDENTS,
   MOCK_VIDEOS,
@@ -17,6 +18,7 @@ import {
 
 type PersistedState = {
   videos: typeof MOCK_VIDEOS;
+  exercises: typeof MOCK_EXERCISES;
   playback: Record<string, VideoPlaybackSettings>;
   preferences: Record<string, UserPreferences>;
   extraStudents: StudentProfile[];
@@ -33,6 +35,7 @@ export function markMockRepositoryHydrated() {
 
 const memoryState: PersistedState = {
   videos: [...MOCK_VIDEOS],
+  exercises: [...MOCK_EXERCISES],
   playback: {},
   preferences: {},
   extraStudents: [],
@@ -53,6 +56,7 @@ function loadState(): PersistedState {
     const parsed = JSON.parse(raw) as PersistedState;
     return {
       videos: parsed.videos?.length ? parsed.videos : [...MOCK_VIDEOS],
+      exercises: parsed.exercises?.length ? parsed.exercises : [...MOCK_EXERCISES],
       playback: parsed.playback ?? {},
       preferences: parsed.preferences ?? {},
       extraStudents: Array.isArray(parsed.extraStudents) ? parsed.extraStudents : [],
@@ -212,5 +216,29 @@ export const mockRepository: AppRepository = {
 
   appendMockStudent(student) {
     appendExtraStudent(student);
+  },
+
+  listExercisesForStudent(crmId, opts) {
+    const state = loadState();
+    return state.exercises
+      .filter((exercise) => {
+        if (exercise.studentCrmId !== crmId) return false;
+        if (opts?.lessonId && exercise.lessonId !== opts.lessonId) return false;
+        return true;
+      })
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  },
+
+  addExercise(input) {
+    const state = loadState();
+    const created = {
+      ...input,
+      id: `ex-${Date.now()}`,
+      notes: input.notes.map((note, idx) => ({ ...note, id: note.id || `n-${idx + 1}` })),
+      createdAt: new Date().toISOString(),
+    };
+    state.exercises = [created, ...state.exercises];
+    saveState(state);
+    return created;
   },
 };
