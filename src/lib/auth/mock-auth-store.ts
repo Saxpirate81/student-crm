@@ -6,7 +6,9 @@ import type {
   MockPasswordResetToken,
   MockSessionChild,
   MockSessionParent,
+  MockSessionProducer,
 } from "@/lib/auth/types";
+import { MOCK_DEMO_PASSWORD, MOCK_PRODUCER_EMAIL } from "@/lib/auth/constants";
 import type { StudentProfile } from "@/lib/domain/types";
 import { appendMockStudent } from "@/lib/data/mockRepository";
 
@@ -250,6 +252,18 @@ export function loginParent(email: string, password: string): MockSessionParent 
     parentCrmId: p.parentCrmId,
     email: p.email,
     displayName: p.displayName,
+  };
+}
+
+/** Mock producer (admin) — not stored in the household auth bundle. */
+export function loginProducer(email: string, password: string): MockSessionProducer | null {
+  const key = normalizeEmail(email);
+  if (key !== normalizeEmail(MOCK_PRODUCER_EMAIL)) return null;
+  if (password !== MOCK_DEMO_PASSWORD) return null;
+  return {
+    kind: "producer",
+    email: MOCK_PRODUCER_EMAIL,
+    displayName: "Producer",
   };
 }
 

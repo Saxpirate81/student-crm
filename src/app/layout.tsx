@@ -16,7 +16,7 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "Real School Student Experience (Mock)",
-  description: "Mock-first web app prototype for Student, Parent, Instructor, and Admin views.",
+  description: "Mock-first web app prototype for Student, Parent, Instructor, Producer, and Admin views.",
   icons: {
     icon: "/favicon.svg",
   },

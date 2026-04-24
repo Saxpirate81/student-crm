@@ -62,4 +62,11 @@ export type MockSessionChild = {
   screenName: string;
 };
 
-export type MockSession = MockSessionParent | MockSessionChild;
+/** Mock studio / admin (producer) login — separate from household accounts. */
+export type MockSessionProducer = {
+  kind: "producer";
+  email: string;
+  displayName: string;
+};
+
+export type MockSession = MockSessionParent | MockSessionChild | MockSessionProducer;

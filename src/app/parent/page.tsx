@@ -85,50 +85,64 @@ export default function ParentPage() {
           </p>
         )}
 
-        <div className="mt-4 grid gap-3 md:grid-cols-2">
-          {session?.kind === "parent" ? (
-            <div className="rounded-xl border border-emerald-200/80 bg-emerald-50/60 px-3 py-2 text-sm text-emerald-950 dark:border-emerald-500/25 dark:bg-emerald-950/30 dark:text-emerald-100">
-              Signed in as <span className="font-bold">{session.displayName}</span> ({session.email})
-            </div>
-          ) : (
-            <label className="text-sm font-semibold text-slate-700 dark:text-slate-200">
-              Parent profile (fixture)
-              <select
-                value={parentCrmId}
-                onChange={(event) => setParentCrmId(event.target.value)}
-                className="ui-select mt-1 w-full rounded-lg px-2 py-1"
-              >
-                {fixtureParentIds.map((id) => {
-                  const labelStudent = repository.listStudents().find((s) => s.parentCrmId === id);
-                  return (
-                    <option key={id} value={id}>
-                      {labelStudent ? `${labelStudent.displayName.split(" ")[0]}'s parent (${id})` : id}
-                    </option>
-                  );
-                })}
-              </select>
-            </label>
-          )}
+        <div className="mt-4 space-y-4">
+          <div className="grid gap-3 md:max-w-xl">
+            {session?.kind === "parent" ? (
+              <div className="rounded-xl border border-emerald-200/80 bg-emerald-50/60 px-3 py-2 text-sm text-emerald-950 dark:border-emerald-500/25 dark:bg-emerald-950/30 dark:text-emerald-100">
+                Signed in as <span className="font-bold">{session.displayName}</span> ({session.email})
+              </div>
+            ) : (
+              <label className="text-sm font-semibold text-slate-700 dark:text-slate-200">
+                Parent profile (fixture)
+                <select
+                  value={parentCrmId}
+                  onChange={(event) => setParentCrmId(event.target.value)}
+                  className="ui-select mt-1 w-full rounded-lg px-2 py-1"
+                >
+                  {fixtureParentIds.map((id) => {
+                    const labelStudent = repository.listStudents().find((s) => s.parentCrmId === id);
+                    return (
+                      <option key={id} value={id}>
+                        {labelStudent ? `${labelStudent.displayName.split(" ")[0]}'s parent (${id})` : id}
+                      </option>
+                    );
+                  })}
+                </select>
+              </label>
+            )}
+          </div>
 
-          <label className="text-sm font-semibold text-slate-700 dark:text-slate-200">
-            Child
-            <select
-              value={selectedStudent}
-              onChange={(event) => setSelectedStudent(event.target.value)}
-              disabled={!children.length}
-              className="ui-select mt-1 w-full rounded-lg px-2 py-1"
-            >
-              {!children.length ? (
-                <option value="">No profiles for this parent</option>
-              ) : (
-                children.map((student) => (
-                  <option key={student.crmId} value={student.crmId}>
+          <div>
+            <p className="text-sm font-semibold text-slate-700 dark:text-slate-200">Students in this household</p>
+            <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
+              Tap a student to preview their videos and progress here. Student sign-in still uses the dedicated
+              student view.
+            </p>
+            <div className="mt-3 flex flex-wrap gap-2" role="tablist" aria-label="Household students">
+              {children.map((student) => {
+                const active = student.crmId === selectedStudent;
+                return (
+                  <button
+                    key={student.crmId}
+                    type="button"
+                    role="tab"
+                    aria-selected={active}
+                    onClick={() => setSelectedStudent(student.crmId)}
+                    className={`rounded-full border px-4 py-2 text-sm font-bold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/70 disabled:cursor-not-allowed disabled:opacity-50 ${
+                      active
+                        ? "border-indigo-500 bg-indigo-600 text-white shadow-sm dark:border-indigo-400 dark:bg-indigo-500"
+                        : "border-slate-200/90 bg-white text-slate-800 hover:border-indigo-300/80 dark:border-white/10 dark:bg-slate-900/60 dark:text-slate-100 dark:hover:border-indigo-500/40"
+                    }`}
+                  >
                     {student.displayName}
-                  </option>
-                ))
-              )}
-            </select>
-          </label>
+                  </button>
+                );
+              })}
+            </div>
+            {!children.length && (
+              <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">No student profiles for this parent.</p>
+            )}
+          </div>
         </div>
       </section>
 

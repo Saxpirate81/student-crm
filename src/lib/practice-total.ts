@@ -21,9 +21,14 @@ export function getPracticeTotalSeconds(userKey: string): number {
 }
 
 export function addPracticeSeconds(userKey: string, seconds: number) {
-  if (typeof window === "undefined" || seconds <= 0) return 0;
+  if (typeof window === "undefined") return 0;
   const prev = getPracticeTotalSeconds(userKey);
-  const next = prev + Math.round(seconds);
+  if (seconds <= 0) return prev;
+
+  const rounded = Math.round(seconds);
+  if (rounded <= 0) return prev;
+
+  const next = prev + rounded;
   try {
     window.localStorage.setItem(practiceTotalStorageKey(userKey), String(next));
   } catch {

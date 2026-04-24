@@ -32,13 +32,22 @@ export function SessionChrome() {
   const label =
     session.kind === "parent"
       ? `${session.displayName} (parent)`
-      : `${session.screenName} (family)`;
+      : session.kind === "producer"
+        ? `${session.displayName} (producer)`
+        : `${session.screenName} (family)`;
+
+  const title =
+    session.kind === "parent"
+      ? session.email
+      : session.kind === "producer"
+        ? session.email
+        : session.studentCrmId;
 
   return (
     <div className="flex max-w-[min(100%,220px)] flex-col items-end gap-1 sm:max-w-none sm:flex-row sm:items-center sm:gap-2">
       <span
         className="truncate text-right text-[11px] font-semibold text-slate-600 dark:text-slate-300"
-        title={session.kind === "parent" ? session.email : session.studentCrmId}
+        title={title}
       >
         {label}
       </span>

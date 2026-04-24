@@ -2,7 +2,7 @@
 
 import { useRef, useState } from "react";
 import type { NotationExercise } from "@/lib/domain/types";
-import { formatExercisePattern, instrumentTimbre, pitchToHz } from "@/lib/music/notation";
+import { instrumentTimbre, pitchToHz } from "@/lib/music/notation";
 import { NotationStaff } from "@/components/music/NotationStaff";
 
 type ExerciseCardProps = {
@@ -11,7 +11,6 @@ type ExerciseCardProps = {
 
 export function ExerciseCard({ exercise }: ExerciseCardProps) {
   const [playing, setPlaying] = useState(false);
-  const [activeNoteId, setActiveNoteId] = useState<string | null>(null);
   const timeoutsRef = useRef<number[]>([]);
 
   const clearPlaybackTimers = () => {
@@ -19,7 +18,6 @@ export function ExerciseCard({ exercise }: ExerciseCardProps) {
       window.clearTimeout(timer);
     }
     timeoutsRef.current = [];
-    setActiveNoteId(null);
     setPlaying(false);
   };
 
@@ -35,7 +33,6 @@ export function ExerciseCard({ exercise }: ExerciseCardProps) {
       const startSec = offset;
       const durationSec = Math.max(0.06, note.beats * beatSec);
       const timer = window.setTimeout(() => {
-        setActiveNoteId(note.id);
         const frequency = pitchToHz(note.pitch);
         if (frequency == null) return;
         const osc = context.createOscillator();
@@ -68,7 +65,7 @@ export function ExerciseCard({ exercise }: ExerciseCardProps) {
   };
 
   return (
-    <article className="rounded-2xl border border-slate-200/90 bg-white/85 p-4 shadow-sm dark:border-white/10 dark:bg-slate-900/50">
+    <article className="ui-panel p-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
           <h4 className="text-sm font-bold text-slate-900 dark:text-white">{exercise.title}</h4>
@@ -84,29 +81,9 @@ export function ExerciseCard({ exercise }: ExerciseCardProps) {
           {playing ? "Stop" : "Play"}
         </button>
       </div>
-
-      <div className="mt-3 flex flex-wrap gap-1.5">
-        {exercise.notes.map((note) => (
-          <span
-            key={note.id}
-            className={`rounded-full px-2 py-1 text-[11px] font-semibold ${
-              activeNoteId === note.id
-                ? "bg-indigo-600 text-white"
-                : "border border-slate-300/90 bg-slate-100 text-slate-700 dark:border-white/15 dark:bg-white/5 dark:text-slate-200"
-            }`}
-          >
-            {note.pitch} · {note.beats}
-          </span>
-        ))}
-      </div>
-
       <div className="mt-3">
         <NotationStaff notes={exercise.notes} />
       </div>
-
-      <p className="mt-3 break-all text-[11px] text-slate-500 dark:text-slate-400">
-        Pattern: {formatExercisePattern(exercise.notes)}
-      </p>
     </article>
   );
 }

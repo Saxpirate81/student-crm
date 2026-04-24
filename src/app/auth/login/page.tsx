@@ -4,19 +4,21 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { useAuth } from "@/lib/auth/auth-context";
-import { MOCK_DEMO_PASSWORD } from "@/lib/auth/constants";
+import { MOCK_DEMO_PASSWORD, MOCK_PRODUCER_EMAIL } from "@/lib/auth/constants";
 
-type Tab = "parent" | "family";
+type Tab = "parent" | "student" | "producer";
 
 export default function LoginPage() {
   const router = useRouter();
-  const { loginAsParent, loginAsChild } = useAuth();
+  const { loginAsParent, loginAsChild, loginAsProducer } = useAuth();
   const [tab, setTab] = useState<Tab>("parent");
   const [parentEmail, setParentEmail] = useState("");
   const [parentPassword, setParentPassword] = useState("");
   const [familyParentEmail, setFamilyParentEmail] = useState("");
   const [screenName, setScreenName] = useState("");
   const [familyPassword, setFamilyPassword] = useState("");
+  const [producerEmail, setProducerEmail] = useState("");
+  const [producerPassword, setProducerPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
 
   const submitParent = (event: React.FormEvent) => {
@@ -41,6 +43,17 @@ export default function LoginPage() {
     router.push("/student");
   };
 
+  const submitProducer = (event: React.FormEvent) => {
+    event.preventDefault();
+    setError(null);
+    const ok = loginAsProducer(producerEmail, producerPassword);
+    if (!ok) {
+      setError("Producer email or password does not match.");
+      return;
+    }
+    router.push("/producer");
+  };
+
   return (
     <div className="rounded-3xl border border-[var(--card-border)] bg-[var(--card)] p-6 shadow-xl shadow-slate-900/[0.06] backdrop-blur-xl dark:shadow-black/40 sm:p-8">
       <p className="text-[11px] font-bold uppercase tracking-widest text-indigo-600 dark:text-indigo-400">
@@ -48,38 +61,55 @@ export default function LoginPage() {
       </p>
       <h1 className="mt-2 text-2xl font-black tracking-tight text-slate-900 dark:text-white">Log in</h1>
       <p className="mt-2 text-sm text-slate-600 dark:text-slate-400">
-        Parents use email. Family members use the parent&apos;s email + their screen name. For quick tests,
-        use password <span className="font-mono font-semibold text-slate-800 dark:text-slate-200">{MOCK_DEMO_PASSWORD}</span>.
+        Three entry points: parent household email, student (family screen name), or producer studio account. Demo
+        password{" "}
+        <span className="font-mono font-semibold text-slate-800 dark:text-slate-200">{MOCK_DEMO_PASSWORD}</span>.
+        Producer demo email{" "}
+        <span className="font-mono font-semibold text-slate-800 dark:text-slate-200">{MOCK_PRODUCER_EMAIL}</span>.
       </p>
 
-      <div className="mt-5 flex rounded-full border border-slate-200/90 bg-slate-100/80 p-1 dark:border-white/10 dark:bg-slate-950/60">
+      <div className="mt-5 grid grid-cols-3 gap-1 rounded-2xl border border-slate-200/90 bg-slate-100/80 p-1 dark:border-white/10 dark:bg-slate-950/60 sm:flex sm:rounded-full">
         <button
           type="button"
           onClick={() => {
             setTab("parent");
             setError(null);
           }}
-          className={`flex-1 rounded-full px-3 py-2 text-xs font-bold transition ${
+          className={`rounded-xl px-2 py-2 text-[11px] font-bold transition sm:flex-1 sm:rounded-full sm:text-xs ${
             tab === "parent"
               ? "bg-white text-indigo-700 shadow-sm dark:bg-slate-800 dark:text-indigo-300"
               : "text-slate-600 dark:text-slate-400"
           }`}
         >
-          Parent (email)
+          Parent
         </button>
         <button
           type="button"
           onClick={() => {
-            setTab("family");
+            setTab("student");
             setError(null);
           }}
-          className={`flex-1 rounded-full px-3 py-2 text-xs font-bold transition ${
-            tab === "family"
+          className={`rounded-xl px-2 py-2 text-[11px] font-bold transition sm:flex-1 sm:rounded-full sm:text-xs ${
+            tab === "student"
               ? "bg-white text-indigo-700 shadow-sm dark:bg-slate-800 dark:text-indigo-300"
               : "text-slate-600 dark:text-slate-400"
           }`}
         >
-          Family (screen name)
+          Student
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            setTab("producer");
+            setError(null);
+          }}
+          className={`rounded-xl px-2 py-2 text-[11px] font-bold transition sm:flex-1 sm:rounded-full sm:text-xs ${
+            tab === "producer"
+              ? "bg-white text-indigo-700 shadow-sm dark:bg-slate-800 dark:text-indigo-300"
+              : "text-slate-600 dark:text-slate-400"
+          }`}
+        >
+          Producer
         </button>
       </div>
 
@@ -92,7 +122,7 @@ export default function LoginPage() {
         </p>
       )}
 
-      {tab === "parent" ? (
+      {tab === "parent" && (
         <form className="mt-5 space-y-4" onSubmit={submitParent}>
           <label className="block text-sm font-semibold text-slate-800 dark:text-slate-200">
             Parent email
@@ -120,10 +150,12 @@ export default function LoginPage() {
             type="submit"
             className="ui-button-primary w-full rounded-xl py-2.5 text-sm font-bold shadow-md"
           >
-            Continue as parent
+            Continue to parent view
           </button>
         </form>
-      ) : (
+      )}
+
+      {tab === "student" && (
         <form className="mt-5 space-y-4" onSubmit={submitFamily}>
           <label className="block text-sm font-semibold text-slate-800 dark:text-slate-200">
             Parent account email
@@ -162,7 +194,41 @@ export default function LoginPage() {
             type="submit"
             className="ui-button-primary w-full rounded-xl py-2.5 text-sm font-bold shadow-md"
           >
-            Continue as student
+            Continue to student view
+          </button>
+        </form>
+      )}
+
+      {tab === "producer" && (
+        <form className="mt-5 space-y-4" onSubmit={submitProducer}>
+          <label className="block text-sm font-semibold text-slate-800 dark:text-slate-200">
+            Producer email
+            <input
+              required
+              type="email"
+              autoComplete="username"
+              value={producerEmail}
+              onChange={(e) => setProducerEmail(e.target.value)}
+              placeholder={MOCK_PRODUCER_EMAIL}
+              className="ui-input mt-1 w-full rounded-xl px-3 py-2 text-sm"
+            />
+          </label>
+          <label className="block text-sm font-semibold text-slate-800 dark:text-slate-200">
+            Password
+            <input
+              required
+              type="password"
+              autoComplete="current-password"
+              value={producerPassword}
+              onChange={(e) => setProducerPassword(e.target.value)}
+              className="ui-input mt-1 w-full rounded-xl px-3 py-2 text-sm"
+            />
+          </label>
+          <button
+            type="submit"
+            className="ui-button-primary w-full rounded-xl py-2.5 text-sm font-bold shadow-md"
+          >
+            Continue to producer view
           </button>
         </form>
       )}

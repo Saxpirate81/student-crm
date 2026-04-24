@@ -5,6 +5,7 @@ const roles = [
   { href: "/student", label: "Student" },
   { href: "/parent", label: "Parent" },
   { href: "/instructor", label: "Instructor" },
+  { href: "/producer", label: "Producer" },
   { href: "/admin", label: "Admin" },
 ];
 

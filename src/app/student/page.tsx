@@ -2,23 +2,223 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { ProgramTabs } from "@/components/ProgramTabs";
-import { VideoCard } from "@/components/VideoCard";
-import type { ProgramType } from "@/lib/domain/types";
+import type { LessonSummary, MetronomeSound, ProgramType, StudentProfile, StudentVideo } from "@/lib/domain/types";
+import { MOCK_USER_KEYS } from "@/lib/data/repository";
 import { useAuth } from "@/lib/auth/auth-context";
+import { useMetronome } from "@/hooks/useMetronome";
+import { useMicPracticeDetector } from "@/hooks/useMicPracticeDetector";
+import {
+  addListeningSeconds,
+  addListeningTrack,
+  loadListeningState,
+  markStudentNewsRead,
+  type ListeningTrack,
+  type ListeningState,
+  type NewsUpdate,
+} from "@/lib/listening/mock-listening-store";
 import { useRepository } from "@/lib/useRepository";
+
+type StudioPage = "dashboard" | "assignments" | "practice" | "listening" | "achievements" | "progress";
+
+type Assignment = {
+  id: string;
+  title: string;
+  type: "Practice" | "Theory" | "Performance";
+  due: string;
+  done: boolean;
+  xpReward: number;
+  notes?: string;
+  lessonId?: string;
+};
+
+const navItems: Array<{ id: StudioPage; label: string; icon: keyof typeof icons }> = [
+  { id: "dashboard", label: "Studio", icon: "grid" },
+  { id: "assignments", label: "Tasks", icon: "clip" },
+  { id: "practice", label: "Practice", icon: "music" },
+  { id: "listening", label: "Listen", icon: "headphones" },
+  { id: "achievements", label: "Awards", icon: "trophy" },
+  { id: "progress", label: "Progress", icon: "chart" },
+];
+
+const programLabels: Record<ProgramType, string> = {
+  lessons: "Lessons",
+  bands: "Bands",
+  camps: "Camps",
+};
+
+const mockStudentAges: Record<string, number> = {
+  "crm-alex": 14,
+  "crm-sam": 9,
+};
+
+const icons = {
+  grid: (
+    <path d="M1 1h6v6H1zM9 1h6v6H9zM1 9h6v6H1zM9 9h6v6H9z" />
+  ),
+  clip: (
+    <>
+      <rect x="3" y="2" width="10" height="13" rx="1.5" />
+      <path d="M6 2a2 2 0 0 1 4 0M6 7h4M6 10h3" />
+    </>
+  ),
+  chart: <path d="M1 12 5 7l3 2 4-5 3 2" />,
+  music: (
+    <>
+      <path d="M6 13V3l9-2v10" />
+      <circle cx="4" cy="13" r="2" />
+      <circle cx="13" cy="11" r="2" />
+    </>
+  ),
+  headphones: (
+    <>
+      <path d="M3 9V7a5 5 0 0 1 10 0v2" />
+      <rect x="1.5" y="8" width="3" height="5" rx="1" />
+      <rect x="11.5" y="8" width="3" height="5" rx="1" />
+    </>
+  ),
+  trophy: (
+    <>
+      <path d="M5 2h6v6a3 3 0 0 1-6 0V2zM5 4H2v2a2 2 0 0 0 3 1.7M11 4h3v2a2 2 0 0 1-3 1.7M8 11v2M5 14h6" />
+    </>
+  ),
+};
+
+function StudioIcon({ icon, className = "" }: { icon: keyof typeof icons; className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+      {icons[icon]}
+    </svg>
+  );
+}
+
+function initials(name: string) {
+  return name
+    .split(" ")
+    .map((part) => part[0])
+    .join("")
+    .slice(0, 2)
+    .toUpperCase();
+}
+
+function formatShortDate(value: string) {
+  const date = new Date(`${value}T12:00:00`);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+}
+
+function formatClock(totalSeconds: number) {
+  const m = Math.floor(totalSeconds / 60);
+  const s = totalSeconds % 60;
+  return `${m}:${String(s).padStart(2, "0")}`;
+}
+
+function ageBandFor(age: number) {
+  if (age < 10) return "<10";
+  if (age < 13) return "10-12";
+  if (age <= 18) return "13-18";
+  return "19+";
+}
+
+function practiceRankingFor(student: StudentProfile, roster: StudentProfile[], weekTotal: number) {
+  const age = mockStudentAges[student.crmId] ?? 16;
+  const band = ageBandFor(age);
+  const bandRoster = roster.filter((entry) => ageBandFor(mockStudentAges[entry.crmId] ?? 16) === band);
+  const scores = bandRoster
+    .map((entry) => ({
+      crmId: entry.crmId,
+      name: entry.displayName,
+      minutes: entry.crmId === student.crmId ? weekTotal : entry.crmId === "crm-sam" ? 118 : 94,
+    }))
+    .sort((a, b) => b.minutes - a.minutes);
+  const rank = Math.max(1, scores.findIndex((entry) => entry.crmId === student.crmId) + 1);
+  return { age, band, rank, total: scores.length, leaders: scores.slice(0, 3) };
+}
+
+function buildAssignments(studentName: string, lessons: LessonSummary[]) {
+  const anchorLesson = lessons[0];
+  return lessons.slice(0, 5).map((lesson, index): Assignment => {
+    const isTheory = index % 3 === 1;
+    const isPerformance = index % 3 === 2;
+    return {
+      id: lesson.id,
+      title: isTheory
+        ? `Review notes from ${lesson.title}`
+        : isPerformance
+          ? `Record a clean take for ${lesson.title}`
+          : `Practice ${lesson.title} focus points`,
+      type: isTheory ? "Theory" : isPerformance ? "Performance" : "Practice",
+      due: formatShortDate(lesson.scheduledDate),
+      done: index === lessons.length - 1,
+      xpReward: isPerformance ? 100 : isTheory ? 35 : 50,
+      notes: lesson.notes,
+      lessonId: lesson.id,
+    };
+  }).concat([
+    {
+      id: `${studentName}-warmup`,
+      title: anchorLesson ? `Daily warmup for ${anchorLesson.title}` : "Daily warmup with metronome",
+      type: "Practice",
+      due: "Today",
+      done: false,
+      xpReward: 30,
+      notes: anchorLesson?.notes ?? "Start slow, lock the pulse, then raise tempo by 4 BPM.",
+      lessonId: anchorLesson?.id,
+    },
+  ]);
+}
+
+function assignmentBadge(type: Assignment["type"]) {
+  if (type === "Theory") return "b-gold";
+  if (type === "Performance") return "b-green";
+  return "b-blue";
+}
+
+function VideoTile({ video }: { video: StudentVideo }) {
+  const href = video.lessonId
+    ? `/student/lessons/${video.lessonId}?v=${encodeURIComponent(video.id)}`
+    : `/student/videos/${video.id}`;
+
+  return (
+    <Link href={href} className="c-video-card">
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src={video.thumbnailUrl} alt="" className="c-video-img" />
+      <div className="c-video-shade" />
+      <div className="c-video-play" aria-hidden>
+        <svg viewBox="0 0 16 16" fill="currentColor">
+          <polygon points="4,2 14,8 4,14" />
+        </svg>
+      </div>
+      <div className="watermark">CADENZA</div>
+      <div className="c-video-copy">
+        <span className="badge b-purple">{video.uploaderRole}</span>
+        <strong>{video.title}</strong>
+        <span>{video.lessonId ? "Open lesson player" : "Open player + tools"}</span>
+      </div>
+    </Link>
+  );
+}
 
 export default function StudentPage() {
   const { session, ready } = useAuth();
   const { repository, version } = useRepository();
+  const [theme, setTheme] = useState<"dark" | "light">("dark");
+  const [page, setPage] = useState<StudioPage>("dashboard");
+  const [drawerOpen, setDrawerOpen] = useState(false);
   const [studentCrmId, setStudentCrmId] = useState("crm-alex");
+  const [practiceSeconds, setPracticeSeconds] = useState(0);
+  const [micRetryNonce, setMicRetryNonce] = useState(0);
+  const [completedAssignments, setCompletedAssignments] = useState<Record<string, boolean>>({});
+  const [listeningVersion, setListeningVersion] = useState(0);
+  const [listeningTitle, setListeningTitle] = useState("");
+  const [listeningUrl, setListeningUrl] = useState("");
+  const [listeningLessonId, setListeningLessonId] = useState("latest");
+  const [listeningSongTitle, setListeningSongTitle] = useState("");
+  const [listeningState, setListeningState] = useState<ListeningState>({ tracks: [], news: [] });
 
   const selectableStudents = useMemo(() => {
     void version;
     const all = repository.listStudents();
-    if (session?.kind === "parent") {
-      return all.filter((row) => row.parentCrmId === session.parentCrmId);
-    }
+    if (session?.kind === "parent") return all.filter((row) => row.parentCrmId === session.parentCrmId);
     return all;
   }, [repository, session, version]);
 
@@ -28,192 +228,957 @@ export default function StudentPage() {
       setStudentCrmId(session.studentCrmId);
       return;
     }
-    if (session?.kind === "parent") {
-      if (!selectableStudents.length) return;
-      setStudentCrmId((prev) => {
-        const allowed = new Set(selectableStudents.map((row) => row.crmId));
-        if (allowed.has(prev)) return prev;
-        return selectableStudents[0].crmId;
-      });
+    if (session?.kind === "parent" && selectableStudents.length) {
+      setStudentCrmId((prev) =>
+        selectableStudents.some((student) => student.crmId === prev) ? prev : selectableStudents[0].crmId,
+      );
     }
-  }, [ready, session, selectableStudents]);
+  }, [ready, selectableStudents, session]);
 
-  const programs = repository.listProgramsForStudent(studentCrmId);
+  const student = repository.getStudent(studentCrmId) ?? selectableStudents[0] ?? repository.listStudents()[0];
+  const programs = repository.listProgramsForStudent(student?.crmId ?? studentCrmId);
   const [activeProgram, setActiveProgram] = useState<ProgramType>(programs[0] ?? "lessons");
 
   useEffect(() => {
-    const next = repository.listProgramsForStudent(studentCrmId);
-    setActiveProgram((prev) => (next.includes(prev) ? prev : next[0] ?? "lessons"));
-  }, [studentCrmId, repository, version]);
+    if (!student) return;
+    const next = repository.listProgramsForStudent(student.crmId);
+    setActiveProgram((current) => (next.includes(current) ? current : next[0] ?? "lessons"));
+  }, [student, repository, version]);
 
-  const lessons = repository.listLessonsForStudent(studentCrmId, activeProgram);
-  const allVideos = repository.listVideosForStudent(studentCrmId);
+  const lessons = student ? repository.listLessonsForStudent(student.crmId, activeProgram) : [];
+  const allLessons = student ? repository.listLessonsForStudent(student.crmId) : [];
+  const videos = student ? repository.listVideosForStudent(student.crmId) : [];
+  const exercises = student ? repository.listExercisesForStudent(student.crmId) : [];
+  useEffect(() => {
+    setListeningState(loadListeningState());
+  }, [listeningVersion]);
 
-  const student = repository.getStudent(studentCrmId);
+  const listeningTracks = listeningState.tracks.filter((track) => track.studentCrmId === (student?.crmId ?? studentCrmId));
+  const newsUpdates = listeningState.news.filter((item) => item.studentCrmId === (student?.crmId ?? studentCrmId));
+  const unreadNewsCount = newsUpdates.filter((item) => !item.read).length;
+  void listeningVersion;
+  const assignments = buildAssignments(student?.displayName ?? "Student", allLessons).map((assignment) => ({
+    ...assignment,
+    done: completedAssignments[assignment.id] ?? assignment.done,
+  }));
+  const openAssignments = assignments.filter((assignment) => !assignment.done);
+  const totalXp = 2450 + videos.length * 120 + exercises.length * 75 + assignments.filter((item) => item.done).length * 40;
+  const level = Math.max(1, Math.floor(totalXp / 650));
+  const streak = 7 + Math.min(21, allLessons.length * 2 + videos.length);
+  const weekPractice = [0, 32, 28, 35, 0, 22, 40];
+  const weekTotal = weekPractice.reduce((sum, value) => sum + value, 0);
+  const metronome = useMetronome(repository, MOCK_USER_KEYS.student);
+  const micPractice = useMicPracticeDetector({
+    enabled: page === "practice",
+    retryNonce: micRetryNonce,
+    onSegmentComplete: (durationSec) => setPracticeSeconds((value) => value + durationSec),
+  });
+  const livePracticeSeconds = practiceSeconds + micPractice.activeSeconds;
+  const practiceRunning = page === "practice" && micPractice.activeSeconds > 0;
+  const latestLesson = allLessons[0];
+  const practiceRanking = student
+    ? practiceRankingFor(student, repository.listStudents(), weekTotal)
+    : null;
 
   if (ready && session?.kind === "parent" && !selectableStudents.length) {
     return (
-      <div className="rounded-3xl border border-amber-200/80 bg-amber-50/90 p-8 text-center dark:border-amber-500/25 dark:bg-amber-950/30">
+      <div className="rounded-2xl border border-amber-200/80 bg-amber-50/90 p-8 text-center dark:border-amber-500/25 dark:bg-amber-950/30">
         <h1 className="text-xl font-black text-amber-950 dark:text-amber-100">No student profiles yet</h1>
         <p className="mt-2 text-sm text-amber-900/90 dark:text-amber-200/90">
-          Add a family member with a screen name and password from the parent view, then return here.
+          Add a family member from the parent view, then return here.
         </p>
-        <Link
-          href="/parent"
-          className="mt-5 inline-flex rounded-xl bg-amber-800 px-4 py-2 text-sm font-bold text-white hover:bg-amber-700 dark:bg-amber-600 dark:hover:bg-amber-500"
-        >
+        <Link href="/parent" className="ui-button-primary mt-5 inline-flex rounded-xl px-4 py-2 text-sm font-bold">
           Open parent view
         </Link>
       </div>
     );
   }
 
+  const profileName = student?.displayName ?? "Student";
+  const firstName = profileName.split(" ")[0];
+  const pageTitle: Record<StudioPage, string> = {
+    dashboard: "My Studio",
+    assignments: "Assignments",
+    practice: "Practice Log",
+    listening: "Listening",
+    achievements: "Achievements",
+    progress: "Progress",
+  };
+
   return (
-    <div className="space-y-8 pb-12">
-      {/* Branded hero — reads as “premium studio” in any app theme */}
-      <section className="relative overflow-hidden rounded-3xl border border-white/10 bg-gradient-to-br from-slate-950 via-indigo-950 to-slate-900 p-6 text-white shadow-2xl shadow-indigo-950/40 sm:p-8">
-        <div
-          className="pointer-events-none absolute -right-24 -top-24 h-72 w-72 rounded-full bg-fuchsia-500/25 blur-3xl"
-          aria-hidden
-        />
-        <div
-          className="pointer-events-none absolute -bottom-20 -left-16 h-64 w-64 rounded-full bg-cyan-400/15 blur-3xl"
-          aria-hidden
-        />
+    <div className="cadenza-app" data-theme={theme}>
+      <div className={`sidebar-overlay ${drawerOpen ? "open" : ""}`} onClick={() => setDrawerOpen(false)} />
 
-        <div className="relative flex flex-col gap-6 sm:flex-row sm:items-start sm:justify-between">
-          <div className="max-w-xl space-y-2">
-            <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-indigo-200/90">
-              Your practice space
-            </p>
-            <h1 className="text-3xl font-black leading-tight tracking-tight sm:text-4xl">
-              {student ? student.displayName.split(" ")[0] : "Student"}, keep the streak alive.
-            </h1>
-            <p className="text-sm leading-relaxed text-slate-300/95">
-              Lessons, milestones, and tutorials in one place. Pick up where you left off — playback
-              speed and position save per video.
-            </p>
-          </div>
-          <div className="flex shrink-0 flex-col items-stretch gap-2 sm:items-end">
-            {session?.kind === "child" ? (
-              <p className="text-right text-[11px] font-bold uppercase tracking-wider text-slate-400">
-                Signed in as{" "}
-                <span className="text-white normal-case">{session.screenName}</span>
-              </p>
-            ) : (
-              <label className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
-                Profile
-                <select
-                  value={studentCrmId}
-                  disabled={session?.kind === "parent" && !selectableStudents.length}
-                  onChange={(event) => {
-                    const nextId = event.target.value;
-                    setStudentCrmId(nextId);
-                    const nextPrograms = repository.listProgramsForStudent(nextId);
-                    setActiveProgram(nextPrograms[0] ?? "lessons");
-                  }}
-                  className="mt-1 block w-full min-w-[200px] rounded-xl border border-white/15 bg-black/30 px-3 py-2 text-sm font-semibold text-white outline-none ring-indigo-400/0 transition focus:ring-2 focus:ring-indigo-400/60 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
-                >
-                  {(session?.kind === "parent" ? selectableStudents : repository.listStudents()).map((entry) => (
-                    <option key={entry.crmId} value={entry.crmId} className="text-slate-900">
-                      {entry.displayName}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            )}
-          </div>
+      <aside className={`sidebar ${drawerOpen ? "open" : ""}`}>
+        <div className="logo">
+          <div className="logo-name">CADENZA</div>
+          <div className="logo-tag">MUSIC STUDIO</div>
         </div>
-      </section>
-
-      <section className="rounded-3xl border border-[var(--card-border)] bg-[var(--card)] p-5 shadow-lg shadow-slate-900/[0.04] backdrop-blur-xl dark:shadow-black/30 sm:p-7">
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <h2 className="text-lg font-black tracking-tight text-slate-900 dark:text-white">
-              Schedule
-            </h2>
-            <p className="text-sm text-[var(--muted)]">Programs you are enrolled in right now.</p>
-          </div>
+        <div className="role-toggle">
+          <Link className="rtbtn active" href="/student">
+            Student
+          </Link>
+          <Link className="rtbtn" href="/instructor">
+            Instructor
+          </Link>
         </div>
-
-        <div className="mt-5">
-          <ProgramTabs
-            programs={programs.length ? programs : ["lessons"]}
-            activeProgram={activeProgram}
-            onChange={setActiveProgram}
-          />
-        </div>
-
-        <div className="mt-6 grid gap-3 sm:grid-cols-2">
-          {lessons.map((lesson) => (
-            <Link
-              key={lesson.id}
-              href={`/student/lessons/${lesson.id}`}
-              className="group block rounded-2xl border border-slate-200/80 bg-white/60 outline-none transition hover:border-indigo-300/80 hover:shadow-md focus-visible:ring-2 focus-visible:ring-indigo-500/60 dark:border-white/10 dark:bg-slate-900/40 dark:hover:border-indigo-500/40 dark:focus-visible:ring-indigo-400/50"
+        <nav className="nav">
+          <div className="nav-lbl">Menu</div>
+          {navItems.map((item) => (
+            <button
+              key={item.id}
+              className={`nav-item ${page === item.id ? "active" : ""}`}
+              type="button"
+              onClick={() => {
+                setPage(item.id);
+                setDrawerOpen(false);
+              }}
             >
-              <article className="relative overflow-hidden p-4">
-                <div className="absolute inset-y-0 left-0 w-1 rounded-full bg-gradient-to-b from-indigo-500 to-fuchsia-500 opacity-90" />
-                <p className="pl-3 text-[10px] font-bold uppercase tracking-widest text-slate-500 dark:text-slate-400">
-                  Lesson {lesson.lessonNumber} · {lesson.instrument}
-                </p>
-                <h3 className="mt-1 pl-3 text-base font-bold text-slate-900 dark:text-slate-50">
-                  {lesson.title}
-                </h3>
-                <p className="mt-1 pl-3 text-xs font-medium text-slate-500 dark:text-slate-400">
-                  {lesson.scheduledDate}
-                </p>
-                <p className="mt-2 pl-3 text-[10px] font-bold uppercase tracking-wider text-indigo-600 opacity-0 transition group-hover:opacity-100 dark:text-indigo-300">
-                  View videos →
-                </p>
-              </article>
-            </Link>
+              <StudioIcon icon={item.icon} className="nav-ico" />
+              <span>{item.label}</span>
+              {item.id === "assignments" && openAssignments.length ? (
+                <span className="nav-badge">{openAssignments.length}</span>
+              ) : null}
+              {item.id === "listening" && unreadNewsCount ? (
+                <span className="nav-badge">{unreadNewsCount}</span>
+              ) : null}
+            </button>
           ))}
-          {!lessons.length && (
-            <p className="text-sm text-[var(--muted)]">No lessons for this program.</p>
-          )}
+        </nav>
+        <div className="sidebar-user">
+          <div className="su-inner">
+            <div className="su-avatar">{initials(profileName)}</div>
+            <div className="min-w-0">
+              <div className="su-name">{profileName}</div>
+              <div className="su-role">Lv.{level} · {programs.map((program) => programLabels[program]).join(", ")}</div>
+            </div>
+          </div>
         </div>
-      </section>
+      </aside>
 
-      <section className="space-y-4">
-        <div className="flex flex-wrap items-end justify-between gap-3">
-          <div>
-            <h2 className="text-xl font-black tracking-tight text-slate-900 dark:text-white">
-              Watch next
-            </h2>
-            <p className="text-sm text-[var(--muted)]">
-              {student ? `Personal reel for ${student.displayName}` : "Your video library"}
-            </p>
+      <main className="c-main">
+        <div className="topbar">
+          <button className="hamburger" onClick={() => setDrawerOpen(true)} aria-label="Menu" type="button">
+            <span />
+            <span />
+            <span />
+          </button>
+          <div className="page-title">{pageTitle[page]}</div>
+          <div className="topbar-right">
+            <div className="xp-pill">+ {totalXp.toLocaleString()} XP</div>
+            <button className="theme-toggle" onClick={() => setTheme(theme === "dark" ? "light" : "dark")} type="button">
+              <span className="toggle-icon">{theme === "dark" ? "Moon" : "Sun"}</span>
+              <span className="toggle-track"><span className="toggle-knob" /></span>
+              <span className="toggle-lbl">{theme === "dark" ? "Dark" : "Light"}</span>
+            </button>
+            <button className="btn btn-primary" type="button" onClick={() => setPage("practice")}>
+              {page === "practice" ? "Listening" : "Start Practice"}
+            </button>
           </div>
         </div>
 
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {allVideos.map((video) => (
-            <VideoCard
-              key={video.id}
-              video={video}
-              href={
-                video.lessonId
-                  ? `/student/lessons/${video.lessonId}?v=${encodeURIComponent(video.id)}`
-                  : `/student/videos/${video.id}`
-              }
-              subtitle={video.lessonId ? "Open in lesson player" : "Open player + tools"}
+        <div className="content">
+          {page === "dashboard" ? (
+            <Dashboard
+              activeProgram={activeProgram}
+              assignments={assignments}
+              exercises={exercises.length}
+              firstName={firstName}
+              level={level}
+              lessons={lessons}
+              metronome={metronome}
+              openAssignments={openAssignments.length}
+              practiceRunning={practiceRunning}
+              practiceSeconds={livePracticeSeconds}
+              programs={programs}
+              setActiveProgram={setActiveProgram}
+              setPage={setPage}
+              setStudentCrmId={setStudentCrmId}
+              practiceRanking={practiceRanking}
+              selectableStudents={selectableStudents}
+              sessionKind={session?.kind}
+              streak={streak}
+              student={student}
+              studentCrmId={studentCrmId}
+              toggleAssignment={(id) => setCompletedAssignments((current) => ({ ...current, [id]: !assignments.find((a) => a.id === id)?.done }))}
+              totalXp={totalXp}
+              videos={videos}
+              weekPractice={weekPractice}
+              weekTotal={weekTotal}
+              listeningTracks={listeningTracks}
+              newsUpdates={newsUpdates}
+              unreadNewsCount={unreadNewsCount}
+              onOpenListening={() => setPage("listening")}
+              onMarkNewsRead={() => {
+                if (!student) return;
+                markStudentNewsRead(student.crmId);
+                setListeningState(loadListeningState());
+                setListeningVersion((value) => value + 1);
+              }}
             />
-          ))}
+          ) : null}
+          {page === "assignments" ? (
+            <AssignmentsPage
+              assignments={assignments}
+              toggleAssignment={(id) => setCompletedAssignments((current) => ({ ...current, [id]: !assignments.find((a) => a.id === id)?.done }))}
+            />
+          ) : null}
+          {page === "practice" ? (
+            <PracticePage
+              assignments={assignments}
+              practiceRunning={practiceRunning}
+              latestLesson={latestLesson}
+              micStatus={micPractice.micStatus}
+              onRetryMic={() => setMicRetryNonce((value) => value + 1)}
+              practiceSeconds={livePracticeSeconds}
+              videos={videos}
+              weekPractice={weekPractice}
+            />
+          ) : null}
+          {page === "listening" ? (
+            <ListeningPage
+              title={listeningTitle}
+              url={listeningUrl}
+              lessonId={listeningLessonId}
+              songTitle={listeningSongTitle}
+              setTitle={setListeningTitle}
+              setUrl={setListeningUrl}
+              setLessonId={setListeningLessonId}
+              setSongTitle={setListeningSongTitle}
+              tracks={listeningTracks}
+              newsUpdates={newsUpdates}
+              lessons={allLessons}
+              onAddTrack={() => {
+                if (!student || !listeningTitle.trim() || !listeningUrl.trim()) return;
+                const attachedLesson =
+                  allLessons.find((lesson) => lesson.id === (listeningLessonId === "latest" ? allLessons[0]?.id : listeningLessonId)) ??
+                  null;
+                addListeningTrack({
+                  studentCrmId: student.crmId,
+                  title: listeningTitle.trim(),
+                  url: listeningUrl.trim(),
+                  lessonId: attachedLesson?.id ?? null,
+                  lessonTitle: attachedLesson?.title ?? null,
+                  songTitle: listeningSongTitle.trim() || null,
+                  addedBy: "student",
+                });
+                setListeningTitle("");
+                setListeningUrl("");
+                setListeningSongTitle("");
+                setListeningState(loadListeningState());
+                setListeningVersion((value) => value + 1);
+              }}
+              onLogListen={(trackId) => {
+                addListeningSeconds(trackId, 180);
+                setListeningState(loadListeningState());
+                setListeningVersion((value) => value + 1);
+              }}
+              onMarkNewsRead={() => {
+                if (!student) return;
+                markStudentNewsRead(student.crmId);
+                setListeningState(loadListeningState());
+                setListeningVersion((value) => value + 1);
+              }}
+            />
+          ) : null}
+          {page === "achievements" ? (
+            <AchievementsPage
+              profileName={profileName}
+              level={level}
+              streak={streak}
+              totalXp={totalXp}
+              videos={videos.length}
+              exercises={exercises.length}
+            />
+          ) : null}
+          {page === "progress" ? (
+            <ProgressPage assignments={assignments} exercises={exercises.length} level={level} streak={streak} videos={videos.length} />
+          ) : null}
         </div>
-        {!allVideos.length && (
-          <p className="text-sm text-[var(--muted)]">No active videos yet.</p>
+      </main>
+
+      <nav className="mobile-nav">
+        {navItems.map((item) => (
+          <button
+            key={item.id}
+            className={`mob-nav-item ${page === item.id ? "active" : ""}`}
+            onClick={() => setPage(item.id)}
+            type="button"
+          >
+            <StudioIcon icon={item.icon} />
+            <span className="mob-nav-lbl">{item.label}</span>
+            {item.id === "assignments" && openAssignments.length ? <span className="mob-nav-dot" /> : null}
+            {item.id === "listening" && unreadNewsCount ? <span className="mob-nav-dot" /> : null}
+          </button>
+        ))}
+      </nav>
+
+      <button className="fab" type="button" onClick={() => setPage("practice")}>
+        ♪
+      </button>
+    </div>
+  );
+}
+
+function Dashboard(props: {
+  activeProgram: ProgramType;
+  assignments: Assignment[];
+  exercises: number;
+  firstName: string;
+  level: number;
+  lessons: LessonSummary[];
+  metronome: ReturnType<typeof useMetronome>;
+  openAssignments: number;
+  practiceRunning: boolean;
+  practiceSeconds: number;
+  programs: ProgramType[];
+  setActiveProgram: (program: ProgramType) => void;
+  setPage: (page: StudioPage) => void;
+  setStudentCrmId: (id: string) => void;
+  practiceRanking: ReturnType<typeof practiceRankingFor> | null;
+  selectableStudents: StudentProfile[];
+  sessionKind?: string;
+  streak: number;
+  student?: StudentProfile;
+  studentCrmId: string;
+  toggleAssignment: (id: string) => void;
+  totalXp: number;
+  videos: StudentVideo[];
+  weekPractice: number[];
+  weekTotal: number;
+  listeningTracks: ListeningTrack[];
+  newsUpdates: NewsUpdate[];
+  unreadNewsCount: number;
+  onOpenListening: () => void;
+  onMarkNewsRead: () => void;
+}) {
+  const {
+    activeProgram,
+    assignments,
+    exercises,
+    firstName,
+    level,
+    lessons,
+    metronome,
+    openAssignments,
+    practiceRunning,
+    practiceSeconds,
+    programs,
+    setActiveProgram,
+    setPage,
+    setStudentCrmId,
+    practiceRanking,
+    selectableStudents,
+    sessionKind,
+    streak,
+    student,
+    studentCrmId,
+    toggleAssignment,
+    totalXp,
+    videos,
+    weekPractice,
+    weekTotal,
+    listeningTracks,
+    newsUpdates,
+    unreadNewsCount,
+    onOpenListening,
+    onMarkNewsRead,
+  } = props;
+
+  return (
+    <>
+      <section className="studio-hero">
+        <div>
+          <p className="card-title">Your practice space</p>
+          <h1>{firstName}, keep the streak alive.</h1>
+          <p>
+            Lessons, tutorials, practice tools, and progress from the current app now live inside the Cadenza studio shell.
+          </p>
+        </div>
+        {sessionKind === "child" ? (
+          <span className="badge b-green">Family session</span>
+        ) : (
+          <label className="profile-select">
+            Profile
+            <select value={studentCrmId} onChange={(event) => setStudentCrmId(event.target.value)}>
+              {selectableStudents.map((entry) => (
+                <option key={entry.crmId} value={entry.crmId}>
+                  {entry.displayName}
+                </option>
+              ))}
+            </select>
+          </label>
         )}
       </section>
 
-      <div className="text-center sm:text-left">
-        <Link
-          href="/instructor"
-          className="inline-flex items-center gap-2 text-sm font-bold text-indigo-600 underline-offset-4 hover:underline dark:text-indigo-400"
-        >
-          Instructor upload desk
-          <span aria-hidden>→</span>
-        </Link>
+      <section className="grid4">
+        <Metric label="Streak" value={`${streak}`} sub="days" tone="gold" />
+        <Metric label="XP" value={totalXp.toLocaleString()} sub={`Level ${level}`} tone="purple" />
+        <Metric label="Tasks" value={`${openAssignments}`} sub="Open" tone={openAssignments ? "red" : "green"} />
+        <Metric label="Week" value={`${weekTotal}m`} sub="Goal: 210" tone="cyan" />
+      </section>
+
+      <section className="grid2">
+        <MetronomePanel metronome={metronome} />
+        <PracticeCounter
+          running={practiceRunning}
+          seconds={practiceSeconds}
+          statusLabel={practiceRunning ? "Sound detected" : "Open Practice to listen"}
+          onToggle={() => setPage("practice")}
+          buttonLabel="Practice"
+        />
+      </section>
+
+      {practiceRanking ? (
+        <section className="card ranking-card">
+          <div className="card-header">
+            <div>
+              <div className="card-title">Practice ranking</div>
+              <div className="section-sub">Age group {practiceRanking.band} · mock until student ages come from the database.</div>
+            </div>
+            <span className="rank-pill">#{practiceRanking.rank} / {practiceRanking.total}</span>
+          </div>
+          <div className="ranking-grid">
+            {practiceRanking.leaders.map((leader, index) => (
+              <div className={`rank-row ${leader.crmId === student?.crmId ? "current" : ""}`} key={leader.crmId}>
+                <span className="rank-num">{index + 1}</span>
+                <span className="rank-name">{leader.name}</span>
+                <span className="rank-min">{leader.minutes}m</span>
+              </div>
+            ))}
+          </div>
+        </section>
+      ) : null}
+
+      <section className="grid2">
+        <div className="card message-board">
+          <div className="card-header">
+            <div>
+              <div className="card-title">Message board</div>
+              <div className="section-sub">{unreadNewsCount} new updates from instructor, school, and app.</div>
+            </div>
+            <button className="btn btn-sm" type="button" onClick={onMarkNewsRead}>Mark read</button>
+          </div>
+          {newsUpdates.slice(0, 3).map((item) => (
+            <div className={`news-row ${item.read ? "" : "unread"}`} key={item.id}>
+              <span className={`badge ${item.source === "instructor" ? "b-purple" : item.source === "school" ? "b-gold" : "b-cyan"}`}>{item.source}</span>
+              <div>
+                <strong>{item.title}</strong>
+                <p>{item.body}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+        <div className="card">
+          <div className="card-header">
+            <div>
+              <div className="card-title">Listening</div>
+              <div className="section-sub">YouTube playlist time counts toward listening rewards.</div>
+            </div>
+            <button className="btn btn-sm" type="button" onClick={onOpenListening}>Open</button>
+          </div>
+          <Metric
+            label="Total listening"
+            value={`${Math.round(listeningTracks.reduce((sum, track) => sum + track.listenedSeconds, 0) / 60)}m`}
+            sub={`${listeningTracks.length} tracks`}
+            tone="cyan"
+          />
+        </div>
+      </section>
+
+      <section className="card">
+        <div className="card-header">
+          <div>
+            <div className="card-title">Schedule</div>
+            <div className="section-sub">Programs enrolled for {student?.displayName ?? "this student"}.</div>
+          </div>
+        </div>
+        <div className="tabs">
+          {(programs.length ? programs : ["lessons" as ProgramType]).map((program) => (
+            <button
+              key={program}
+              className={`tab ${activeProgram === program ? "active" : ""}`}
+              onClick={() => setActiveProgram(program)}
+              type="button"
+            >
+              {programLabels[program]}
+            </button>
+          ))}
+        </div>
+        <div className="lesson-list">
+          {lessons.map((lesson) => (
+            <Link key={lesson.id} className="lesson-row" href={`/student/lessons/${lesson.id}`}>
+              <span className="lesson-accent" />
+              <span>
+                <strong>{lesson.title}</strong>
+                <small>Lesson {lesson.lessonNumber} · {lesson.instrument} · {formatShortDate(lesson.scheduledDate)}</small>
+              </span>
+              <span className="badge b-purple">Open</span>
+            </Link>
+          ))}
+          {!lessons.length ? <p className="empty-copy">No lessons for this program.</p> : null}
+        </div>
+      </section>
+
+      <section className="grid2">
+        <div className="card">
+          <div className="card-header">
+            <div className="card-title">My assignments</div>
+            <button className="btn btn-sm" type="button" onClick={() => setPage("assignments")}>
+              All
+            </button>
+          </div>
+          {assignments.slice(0, 3).map((assignment) => (
+            <AssignmentRow key={assignment.id} assignment={assignment} onToggle={() => toggleAssignment(assignment.id)} />
+          ))}
+        </div>
+        <div className="card">
+          <div className="card-header">
+            <div className="card-title">This week</div>
+            <span className="badge b-cyan">{weekTotal} min</span>
+          </div>
+          <HeatGrid weekPractice={weekPractice} />
+          <div className="pbar mt-12"><div className="xpbar-fill" style={{ width: `${Math.round((weekTotal / 210) * 100)}%` }} /></div>
+          <div className="section-sub mt-6">{weekTotal} / 210 min this week</div>
+        </div>
+      </section>
+
+      <section className="card">
+        <div className="card-header">
+          <div>
+            <div className="card-title">Watch next</div>
+            <div className="section-sub">{videos.length} current app videos ready for playback.</div>
+          </div>
+          <span className="badge b-gold">{exercises} exercises</span>
+        </div>
+        <div className="video-grid">
+          {videos.map((video) => <VideoTile key={video.id} video={video} />)}
+        </div>
+      </section>
+    </>
+  );
+}
+
+function Metric({ label, value, sub, tone }: { label: string; value: string; sub: string; tone: "purple" | "gold" | "green" | "red" | "cyan" }) {
+  const colors = {
+    purple: "var(--accent2)",
+    gold: "var(--gold)",
+    green: "var(--green)",
+    red: "var(--red)",
+    cyan: "var(--cyan)",
+  };
+  return (
+    <div className="metric">
+      <div className="metric-lbl">{label}</div>
+      <div className="metric-val" style={{ color: colors[tone] }}>{value}</div>
+      <div className="metric-sub">{sub}</div>
+    </div>
+  );
+}
+
+function MetronomePanel({ metronome }: { metronome: ReturnType<typeof useMetronome> }) {
+  return (
+    <div className="metro">
+      <div className="tool-head">
+        <span>Metronome</span>
+        <button className="btn btn-primary btn-sm" onClick={() => metronome.setMetronomeOn((value) => !value)} type="button">
+          {metronome.metronomeOn ? "Stop" : "Start"}
+        </button>
       </div>
+      <div className="metro-bpm">{metronome.bpm}</div>
+      <div className="metro-lbl">BPM</div>
+      <input
+        type="range"
+        min={metronome.minBpm}
+        max={metronome.maxBpm}
+        value={metronome.bpm}
+        onChange={(event) => metronome.setBpm(Number(event.target.value))}
+      />
+      <div className="metro-sounds">
+        {metronome.soundOptions.map((option) => (
+          <button
+            key={option.value}
+            className={`sound-btn ${metronome.metronomeSound === option.value ? "active" : ""}`}
+            onClick={() => metronome.setMetronomeSound(option.value as MetronomeSound)}
+            type="button"
+          >
+            {option.label.replace(" ", "\u00a0")}
+          </button>
+        ))}
+      </div>
+      <div className="metro-beats" aria-hidden>
+        {Array.from({ length: 4 }, (_, i) => <span key={i} className={`beat-dot ${metronome.metronomeOn && i === 0 ? "strong" : ""}`} />)}
+      </div>
+    </div>
+  );
+}
+
+function PracticeCounter({
+  running,
+  seconds,
+  statusLabel,
+  onToggle,
+  buttonLabel,
+}: {
+  running: boolean;
+  seconds: number;
+  statusLabel?: string;
+  onToggle: () => void;
+  buttonLabel?: string;
+}) {
+  return (
+    <div className="practice-counter">
+      <div className="tool-head">
+        <span>Practice Timer</span>
+        <button className="btn btn-sm" onClick={onToggle} type="button">{buttonLabel ?? (running ? "Stop" : "Start")}</button>
+      </div>
+      <div className="status-line"><span className={`pc-dot ${running ? "active" : ""}`} /><span>{statusLabel ?? (running ? "Session live" : "Ready to practice")}</span></div>
+      <div className="pc-timer">{formatClock(seconds)}</div>
+      <div className="pc-label">Session time</div>
+      <div className="waveform" aria-hidden>
+        {Array.from({ length: 16 }, (_, i) => (
+          <span key={i} className="wf-bar" style={{ height: running ? `${6 + ((i * 7 + seconds * 3) % 20)}px` : "3px", opacity: running ? 1 : 0.3 }} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function AssignmentRow({ assignment, onToggle }: { assignment: Assignment; onToggle: () => void }) {
+  return (
+    <div className="arow">
+      <button className={`check ${assignment.done ? "done" : ""}`} onClick={onToggle} type="button" aria-label="Toggle assignment">
+        {assignment.done ? "✓" : ""}
+      </button>
+      <div className="arow-content">
+        <div className={`arow-title ${assignment.done ? "done" : ""}`}>{assignment.title}</div>
+        <div className="arow-meta">
+          <span className={`badge ${assignmentBadge(assignment.type)}`}>{assignment.type}</span>
+          <span className="badge b-purple">+{assignment.xpReward}XP</span>
+          <span>Due {assignment.due}</span>
+          {assignment.lessonId ? <Link href={`/student/lessons/${assignment.lessonId}`}>Lesson</Link> : null}
+        </div>
+        {assignment.notes ? <div className="arow-note">{assignment.notes}</div> : null}
+      </div>
+    </div>
+  );
+}
+
+function AssignmentsPage({ assignments, toggleAssignment }: { assignments: Assignment[]; toggleAssignment: (id: string) => void }) {
+  const done = assignments.filter((assignment) => assignment.done).length;
+  return (
+    <section className="card">
+      <div className="card-header">
+        <div>
+          <div className="card-title">My assignments</div>
+          <div className="section-sub">{done}/{assignments.length} complete</div>
+        </div>
+        <span className="badge b-purple">+{assignments.filter((item) => !item.done).reduce((sum, item) => sum + item.xpReward, 0)} XP available</span>
+      </div>
+      <div className="xpbar-wrap"><div className="xpbar-fill" style={{ width: `${Math.round((done / assignments.length) * 100)}%` }} /></div>
+      <div className="mt-12">
+        {assignments.map((assignment) => <AssignmentRow key={assignment.id} assignment={assignment} onToggle={() => toggleAssignment(assignment.id)} />)}
+      </div>
+    </section>
+  );
+}
+
+function PracticePage(props: {
+  assignments: Assignment[];
+  latestLesson?: LessonSummary;
+  micStatus: ReturnType<typeof useMicPracticeDetector>["micStatus"];
+  onRetryMic: () => void;
+  practiceRunning: boolean;
+  practiceSeconds: number;
+  videos: StudentVideo[];
+  weekPractice: number[];
+}) {
+  const statusLabel =
+    props.micStatus === "denied"
+      ? "Microphone blocked"
+      : props.practiceRunning
+        ? "Music detected — timing"
+        : "Listening for music";
+
+  return (
+    <>
+      <section className="card latest-notes-card">
+        <div className="card-header">
+          <div>
+            <div className="card-title">Latest lesson notes</div>
+            <div className="section-sub">
+              {props.latestLesson
+                ? `Lesson ${props.latestLesson.lessonNumber} · ${props.latestLesson.instrument} · ${formatShortDate(props.latestLesson.scheduledDate)}`
+                : "No lesson notes yet"}
+            </div>
+          </div>
+          {props.latestLesson ? (
+            <Link className="btn btn-sm" href={`/student/lessons/${props.latestLesson.id}`}>
+              Open lesson
+            </Link>
+          ) : null}
+        </div>
+        <h2>{props.latestLesson?.title ?? "Practice focus will appear here"}</h2>
+        <p>{props.latestLesson?.notes ?? "When your instructor adds the next lesson, its notes will become the practice plan for this tab."}</p>
+      </section>
+      <section className="grid2">
+        <PracticeCounter
+          running={props.practiceRunning}
+          seconds={props.practiceSeconds}
+          statusLabel={statusLabel}
+          onToggle={props.micStatus === "denied" ? props.onRetryMic : () => {}}
+          buttonLabel={props.micStatus === "denied" ? "Retry mic" : "Auto"}
+        />
+        <div className="card">
+          <div className="card-title">Weekly</div>
+          {props.weekPractice.map((minutes, index) => (
+            <div className="practice-row" key={`${index}-${minutes}`}>
+              <span>{["M", "T", "W", "T", "F", "S", "S"][index]}</span>
+              <div className="pbar"><div className="pbar-fill" style={{ width: `${Math.min(100, minutes * 2)}%` }} /></div>
+              <small>{minutes || "-"}</small>
+            </div>
+          ))}
+        </div>
+      </section>
+      <section className="card">
+        <div className="card-header"><div className="card-title">Practice queue</div></div>
+        {props.assignments.filter((assignment) => assignment.type === "Practice").map((assignment) => (
+          <AssignmentRow key={assignment.id} assignment={assignment} onToggle={() => {}} />
+        ))}
+      </section>
+      <section className="card">
+        <div className="card-header"><div className="card-title">Tutorials</div></div>
+        <div className="video-grid">{props.videos.map((video) => <VideoTile key={video.id} video={video} />)}</div>
+      </section>
+    </>
+  );
+}
+
+function ListeningPage(props: {
+  title: string;
+  url: string;
+  lessonId: string;
+  songTitle: string;
+  setTitle: (value: string) => void;
+  setUrl: (value: string) => void;
+  setLessonId: (value: string) => void;
+  setSongTitle: (value: string) => void;
+  tracks: ListeningTrack[];
+  newsUpdates: NewsUpdate[];
+  lessons: LessonSummary[];
+  onAddTrack: () => void;
+  onLogListen: (trackId: string) => void;
+  onMarkNewsRead: () => void;
+}) {
+  const totalMinutes = Math.round(props.tracks.reduce((sum, track) => sum + track.listenedSeconds, 0) / 60);
+  const badgeLevel = totalMinutes >= 120 ? "Deep Listener" : totalMinutes >= 45 ? "Active Listener" : "Getting Started";
+  const recentTracks = [...props.tracks]
+    .sort((a, b) => b.addedAt.localeCompare(a.addedAt))
+    .slice(0, 3);
+
+  return (
+    <>
+      <section className="listening-hero">
+        <div>
+          <p className="card-title">Recently added</p>
+          <h2>Listen like it is part of the lesson.</h2>
+          <p>Tracks can attach to the latest lesson or a specific song you are working on.</p>
+        </div>
+        <div className="recent-track-grid">
+          {recentTracks.map((track) => <ListeningCover track={track} key={track.id} onLogListen={props.onLogListen} />)}
+        </div>
+      </section>
+      <section className="grid2">
+        <div className="card listening-add-card">
+          <div className="card-header">
+            <div>
+              <div className="card-title">Add listening track</div>
+              <div className="section-sub">Paste a YouTube URL and build a student playlist.</div>
+            </div>
+          </div>
+          <div className="instructor-form-grid">
+            <label className="form-grp">
+              <span className="form-lbl">Track title</span>
+              <input className="inp" value={props.title} onChange={(event) => props.setTitle(event.target.value)} placeholder="e.g. Groove reference" />
+            </label>
+            <label className="form-grp">
+              <span className="form-lbl">YouTube URL</span>
+              <input className="inp" value={props.url} onChange={(event) => props.setUrl(event.target.value)} placeholder="https://youtube.com/..." />
+            </label>
+            <label className="form-grp">
+              <span className="form-lbl">Attach to lesson</span>
+              <select className="inp" value={props.lessonId} onChange={(event) => props.setLessonId(event.target.value)}>
+                <option value="latest">Latest lesson</option>
+                <option value="none">No lesson attachment</option>
+                {props.lessons.map((lesson) => (
+                  <option key={lesson.id} value={lesson.id}>Lesson {lesson.lessonNumber}: {lesson.title}</option>
+                ))}
+              </select>
+            </label>
+            <label className="form-grp">
+              <span className="form-lbl">Song / focus</span>
+              <input className="inp" value={props.songTitle} onChange={(event) => props.setSongTitle(event.target.value)} placeholder="e.g. Moonlight intro" />
+            </label>
+          </div>
+          <div className="modal-acts">
+            <button className="btn btn-primary" type="button" onClick={props.onAddTrack}>Add to playlist</button>
+          </div>
+        </div>
+        <div className="card">
+          <div className="card-title">Listening rewards</div>
+          <Metric label="Total time" value={`${totalMinutes}m`} sub={badgeLevel} tone="cyan" />
+          <div className="ach" style={{ marginTop: 12 }}>
+            <div className="ach-icon">♪</div>
+            <div>
+              <div className="ach-name">{badgeLevel}</div>
+              <div className="ach-desc">Listening minutes unlock reward badges.</div>
+            </div>
+            <span className="badge b-green">Active</span>
+          </div>
+        </div>
+      </section>
+      <section className="card">
+        <div className="card-header">
+          <div>
+            <div className="card-title">Playlist</div>
+            <div className="section-sub">Instructor and student-added URL tracks.</div>
+          </div>
+        </div>
+        {props.tracks.map((track) => (
+          <div className={`listen-row ${recentTracks.some((recent) => recent.id === track.id) ? "recent" : ""}`} key={track.id}>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img className="listen-thumb" src={track.thumbnailUrl} alt="" />
+            <div>
+              <strong>{track.title}</strong>
+              <span>{track.addedBy} · {Math.round(track.listenedSeconds / 60)} min listened</span>
+              {track.lessonTitle || track.songTitle ? (
+                <span>{track.lessonTitle ?? "No lesson"}{track.songTitle ? ` · ${track.songTitle}` : ""}</span>
+              ) : null}
+              <a href={track.url} target="_blank" rel="noreferrer">{track.url}</a>
+            </div>
+            <button className="btn btn-sm" type="button" onClick={() => props.onLogListen(track.id)}>+3 min</button>
+          </div>
+        ))}
+      </section>
+      <section className="card message-board">
+        <div className="card-header">
+          <div className="card-title">Updates</div>
+          <button className="btn btn-sm" type="button" onClick={props.onMarkNewsRead}>Mark all read</button>
+        </div>
+        {props.newsUpdates.map((item) => (
+          <div className={`news-row ${item.read ? "" : "unread"}`} key={item.id}>
+            <span className={`badge ${item.source === "instructor" ? "b-purple" : item.source === "school" ? "b-gold" : "b-cyan"}`}>{item.source}</span>
+            <div>
+              <strong>{item.title}</strong>
+              <p>{item.body}</p>
+            </div>
+          </div>
+        ))}
+      </section>
+    </>
+  );
+}
+
+function ListeningCover({
+  track,
+  onLogListen,
+}: {
+  track: ListeningTrack;
+  onLogListen: (trackId: string) => void;
+}) {
+  return (
+    <article className="listen-cover">
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src={track.thumbnailUrl} alt="" />
+      <div className="listen-cover-shade" />
+      <div className="listen-cover-copy">
+        <span className="badge b-gold">New</span>
+        <strong>{track.title}</strong>
+        <span>{track.songTitle ?? track.lessonTitle ?? track.addedBy}</span>
+      </div>
+      <button className="cover-play" type="button" onClick={() => onLogListen(track.id)} aria-label={`Log listening for ${track.title}`}>
+        +3
+      </button>
+    </article>
+  );
+}
+
+function AchievementsPage(props: { profileName: string; level: number; streak: number; totalXp: number; videos: number; exercises: number }) {
+  const achievements = [
+    { name: "7-Day Warrior", desc: "Practice streak started", unlocked: props.streak >= 7 },
+    { name: "Video Explorer", desc: "Opened the lesson library", unlocked: props.videos > 0 },
+    { name: "Notation Ready", desc: "Instructor exercises assigned", unlocked: props.exercises > 0 },
+    { name: "30-Day Legend", desc: "Reach a 30 day streak", unlocked: props.streak >= 30 },
+  ];
+  return (
+    <>
+      <section className="card profile-card">
+        <div className="lb-avatar av1">{initials(props.profileName)}</div>
+        <div>
+          <h2>{props.profileName}</h2>
+          <div className="profile-badges">
+            <span className="level-badge">Level {props.level}</span>
+            <span className="badge b-gold">{props.totalXp.toLocaleString()} XP</span>
+            <span className="badge b-green">{props.streak} day streak</span>
+          </div>
+        </div>
+      </section>
+      <section className="card">
+        <div className="card-title">Achievements</div>
+        {achievements.map((achievement) => (
+          <div className={`ach ${achievement.unlocked ? "" : "ach-locked"}`} key={achievement.name}>
+            <div className="ach-icon">{achievement.unlocked ? "★" : "·"}</div>
+            <div>
+              <div className="ach-name">{achievement.name}</div>
+              <div className="ach-desc">{achievement.desc}</div>
+            </div>
+            <span className={`badge ${achievement.unlocked ? "b-green" : "b-cyan"}`}>{achievement.unlocked ? "Done" : "Locked"}</span>
+          </div>
+        ))}
+      </section>
+    </>
+  );
+}
+
+function ProgressPage({ assignments, exercises, level, streak, videos }: { assignments: Assignment[]; exercises: number; level: number; streak: number; videos: number }) {
+  const skillRows = [
+    ["Practice", Math.min(96, 45 + assignments.filter((item) => item.done).length * 10)],
+    ["Lessons", Math.min(96, 50 + videos * 8)],
+    ["Theory", Math.min(96, 40 + exercises * 15)],
+    ["Rhythm", Math.min(96, 55 + streak)],
+  ] as const;
+  return (
+    <section className="card">
+      <div className="card-header"><div className="card-title">My skills</div><span className="level-badge">Lv.{level}</span></div>
+      {skillRows.map(([label, value]) => (
+        <div className="srow" key={label}>
+          <div className="sname">{label}</div>
+          <div className="pbar"><div className={`pbar-fill ${value >= 75 ? "green" : value >= 50 ? "gold" : ""}`} style={{ width: `${value}%` }} /></div>
+          <div className="sval">{value}%</div>
+        </div>
+      ))}
+      <div className="card-title mt-12">Monthly stats</div>
+      <div className="grid2 compact-grid">
+        <Metric label="Videos" value={`${videos}`} sub="In library" tone="cyan" />
+        <Metric label="Exercises" value={`${exercises}`} sub="Notation" tone="green" />
+      </div>
+    </section>
+  );
+}
+
+function HeatGrid({ weekPractice }: { weekPractice: number[] }) {
+  return (
+    <div className="heat-grid">
+      {["M", "T", "W", "T", "F", "S", "S"].map((day, index) => {
+        const minutes = weekPractice[index] ?? 0;
+        const level = minutes === 0 ? 0 : minutes < 20 ? 1 : minutes < 35 ? 2 : 3;
+        return (
+          <div className="heat-day" key={`${day}-${index}`}>
+            <div className="heat-lbl">{day}</div>
+            <div className={`heat-box heat-${level} ${index === 2 ? "heat-today" : ""}`}>{minutes || ""}</div>
+          </div>
+        );
+      })}
     </div>
   );
 }

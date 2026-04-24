@@ -14,6 +14,7 @@ import {
   completeParentPasswordReset,
   loginChild as authenticateChild,
   loginParent as authenticateParent,
+  loginProducer as authenticateProducer,
   requestParentPasswordReset,
   resetChildPasswordByParent,
   signUpParentAndOptionalChild,
@@ -45,6 +46,7 @@ type AuthContextValue = {
   ready: boolean;
   loginAsParent: (email: string, password: string) => boolean;
   loginAsChild: (parentEmail: string, screenName: string, password: string) => boolean;
+  loginAsProducer: (email: string, password: string) => boolean;
   signUp: (
     input: SignUpParentInput,
     firstChild?: SignUpChildInput | null,
@@ -77,6 +79,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const loginAsChild = useCallback((parentEmail: string, screenName: string, password: string) => {
     const next = authenticateChild(parentEmail, screenName, password);
+    if (!next) return false;
+    setSession(next);
+    writeSession(next);
+    return true;
+  }, []);
+
+  const loginAsProducer = useCallback((email: string, password: string) => {
+    const next = authenticateProducer(email, password);
     if (!next) return false;
     setSession(next);
     writeSession(next);
@@ -128,6 +138,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       ready,
       loginAsParent,
       loginAsChild,
+      loginAsProducer,
       signUp,
       addChild,
       requestEmailReset,
@@ -140,6 +151,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       ready,
       loginAsParent,
       loginAsChild,
+      loginAsProducer,
       signUp,
       addChild,
       requestEmailReset,

@@ -4,12 +4,12 @@ const roles = [
   {
     href: "/student",
     title: "Student View",
-    detail: "Netflix-style lesson thumbnails, program tabs, and video detail with metronome.",
+    detail: "Family login: one student profile, lessons, and personal video tools.",
   },
   {
     href: "/parent",
     title: "Parent View",
-    detail: "Read-only progress and video feed for the selected child profile.",
+    detail: "Parent login: switch between students in the household and manage family accounts.",
   },
   {
     href: "/instructor",
@@ -17,9 +17,14 @@ const roles = [
     detail: "Upload to student profile, archive videos, and track assigned media.",
   },
   {
+    href: "/producer",
+    title: "Producer View",
+    detail: "Studio admin / producer workspace (mock session). Command tools will land here next.",
+  },
+  {
     href: "/admin",
     title: "Admin View",
-    detail: "Upload, archive, and delete controls for command-center operations.",
+    detail: "Legacy mock command center for uploads, archive, and delete.",
   },
 ];
 
