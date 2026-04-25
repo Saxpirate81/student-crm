@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import { ExerciseCard } from "@/components/music/ExerciseCard";
 import { ExerciseStaffComposer } from "@/components/music/ExerciseStaffComposer";
@@ -25,6 +26,14 @@ const instructorNav: Array<{ id: InstructorPageId; label: string; icon: keyof ty
   { id: "exercises", label: "Exercises", icon: "music" },
   { id: "listening", label: "Listen", icon: "headphones" },
   { id: "videos", label: "Library", icon: "clip" },
+];
+
+const appViewOptions = [
+  { href: "/instructor", label: "Instructor" },
+  { href: "/student", label: "Student" },
+  { href: "/parent", label: "Parent" },
+  { href: "/admin", label: "Admin" },
+  { href: "/producer", label: "Producer" },
 ];
 
 const icons = {
@@ -134,6 +143,7 @@ function InstructorVideoCard({
 }
 
 export default function InstructorPage() {
+  const pathname = usePathname();
   const { repository, refresh } = useRepository();
   const [theme, setTheme] = useState<"dark" | "light">("dark");
   const [page, setPage] = useState<InstructorPageId>("dashboard");
@@ -253,8 +263,21 @@ export default function InstructorPage() {
           <div className="logo-tag">MUSIC STUDIO</div>
         </div>
         <div className="role-toggle">
-          <Link className="rtbtn" href="/student">Student</Link>
-          <Link className="rtbtn active" href="/instructor">Instructor</Link>
+          <select
+            aria-label="Switch app view"
+            className="rt-select"
+            value={appViewOptions.some((option) => option.href === pathname) ? pathname : "/instructor"}
+            onChange={(event) => {
+              const nextPath = event.target.value;
+              if (nextPath) window.location.href = nextPath;
+            }}
+          >
+            {appViewOptions.map((option) => (
+              <option key={option.href} value={option.href}>
+                {option.label}
+              </option>
+            ))}
+          </select>
         </div>
         <nav className="nav">
           <div className="nav-lbl">Menu</div>

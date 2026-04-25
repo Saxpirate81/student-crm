@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import type { LessonSummary, MetronomeSound, ProgramType, StudentProfile, StudentVideo } from "@/lib/domain/types";
 import { MOCK_USER_KEYS } from "@/lib/data/repository";
@@ -38,6 +39,14 @@ const navItems: Array<{ id: StudioPage; label: string; icon: keyof typeof icons 
   { id: "listening", label: "Listen", icon: "headphones" },
   { id: "achievements", label: "Awards", icon: "trophy" },
   { id: "progress", label: "Progress", icon: "chart" },
+];
+
+const appViewOptions = [
+  { href: "/instructor", label: "Instructor" },
+  { href: "/student", label: "Student" },
+  { href: "/parent", label: "Parent" },
+  { href: "/admin", label: "Admin" },
+  { href: "/producer", label: "Producer" },
 ];
 
 const programLabels: Record<ProgramType, string> = {
@@ -199,6 +208,7 @@ function VideoTile({ video }: { video: StudentVideo }) {
 }
 
 export default function StudentPage() {
+  const pathname = usePathname();
   const { session, ready } = useAuth();
   const { repository, version } = useRepository();
   const [theme, setTheme] = useState<"dark" | "light">("dark");
@@ -315,12 +325,21 @@ export default function StudentPage() {
           <div className="logo-tag">MUSIC STUDIO</div>
         </div>
         <div className="role-toggle">
-          <Link className="rtbtn active" href="/student">
-            Student
-          </Link>
-          <Link className="rtbtn" href="/instructor">
-            Instructor
-          </Link>
+          <select
+            aria-label="Switch app view"
+            className="rt-select"
+            value={appViewOptions.some((option) => option.href === pathname) ? pathname : "/instructor"}
+            onChange={(event) => {
+              const nextPath = event.target.value;
+              if (nextPath) window.location.href = nextPath;
+            }}
+          >
+            {appViewOptions.map((option) => (
+              <option key={option.href} value={option.href}>
+                {option.label}
+              </option>
+            ))}
+          </select>
         </div>
         <nav className="nav">
           <div className="nav-lbl">Menu</div>

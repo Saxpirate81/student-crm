@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { VideoCard } from "@/components/VideoCard";
 import { MOCK_DEMO_PASSWORD } from "@/lib/auth/constants";
@@ -8,9 +9,63 @@ import { getAccountDetailsForParent } from "@/lib/auth/mock-auth-store";
 import { useAuth } from "@/lib/auth/auth-context";
 import { useRepository } from "@/lib/useRepository";
 
+type ParentPageId = "dashboard" | "family" | "videos";
+
+const parentNav: Array<{ id: ParentPageId; label: string; icon: keyof typeof icons }> = [
+  { id: "dashboard", label: "Overview", icon: "grid" },
+  { id: "family", label: "Family", icon: "users" },
+  { id: "videos", label: "Videos", icon: "clip" },
+];
+
+const appViewOptions = [
+  { href: "/instructor", label: "Instructor" },
+  { href: "/student", label: "Student" },
+  { href: "/parent", label: "Parent" },
+  { href: "/admin", label: "Admin" },
+  { href: "/producer", label: "Producer" },
+];
+
+const icons = {
+  grid: <path d="M1 1h6v6H1zM9 1h6v6H9zM1 9h6v6H1zM9 9h6v6H9z" />,
+  clip: (
+    <>
+      <rect x="3" y="2" width="10" height="13" rx="1.5" />
+      <path d="M6 2a2 2 0 0 1 4 0M6 7h4M6 10h3" />
+    </>
+  ),
+  users: (
+    <>
+      <circle cx="6" cy="6" r="2.2" />
+      <circle cx="11.2" cy="6.8" r="1.8" />
+      <path d="M2.5 13c0-2 2-3.4 3.5-3.4S9.5 11 9.5 13M9 13c.1-1.4 1.4-2.5 2.9-2.5 1.4 0 2.6 1 2.6 2.5" />
+    </>
+  ),
+};
+
+function StudioIcon({ icon, className = "" }: { icon: keyof typeof icons; className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+      {icons[icon]}
+    </svg>
+  );
+}
+
+function initials(name: string) {
+  return name
+    .split(" ")
+    .map((part) => part[0])
+    .join("")
+    .slice(0, 2)
+    .toUpperCase();
+}
+
 export default function ParentPage() {
+  const pathname = usePathname();
   const { session, ready, addChild, resetChildPassword } = useAuth();
   const { repository, refresh, version } = useRepository();
+  const [theme, setTheme] = useState<"dark" | "light">("dark");
+  const [page, setPage] = useState<ParentPageId>("dashboard");
+  const [drawerOpen, setDrawerOpen] = useState(false);
   const [parentCrmId, setParentCrmId] = useState("parent-jordan");
   const [selectedStudent, setSelectedStudent] = useState("crm-alex");
 
@@ -43,6 +98,13 @@ export default function ParentPage() {
   const [familyMessage, setFamilyMessage] = useState<string | null>(null);
 
   const accountDetails = session?.kind === "parent" ? getAccountDetailsForParent(session) : null;
+  const selectedStudentRow = children.find((student) => student.crmId === selectedStudent);
+
+  const pageTitle: Record<ParentPageId, string> = {
+    dashboard: "Parent Dashboard",
+    family: "Family Access",
+    videos: "Recent Videos",
+  };
 
   const submitAddChild = (event: React.FormEvent) => {
     event.preventDefault();
@@ -64,197 +126,257 @@ export default function ParentPage() {
   };
 
   return (
-    <div className="space-y-5">
-      <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-white/10 dark:bg-slate-900/50">
-        <h1 className="text-xl font-black text-slate-900 dark:text-white">Parent View</h1>
-        <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
-          Read-only progress and media updates. Sign in to manage your real household ids and family logins.
-        </p>
+    <div className="cadenza-app" data-theme={theme}>
+      <div className={`sidebar-overlay ${drawerOpen ? "open" : ""}`} onClick={() => setDrawerOpen(false)} />
 
-        {ready && session?.kind !== "parent" && (
-          <p className="mt-3 rounded-xl border border-indigo-200/80 bg-indigo-50/80 px-3 py-2 text-sm text-indigo-950 dark:border-indigo-500/25 dark:bg-indigo-950/35 dark:text-indigo-100">
-            Demo mode: pick a fixture parent, or{" "}
-            <Link href="/auth/signup" className="font-bold underline-offset-2 hover:underline">
-              sign up
-            </Link>{" "}
-            /{" "}
-            <Link href="/auth/login" className="font-bold underline-offset-2 hover:underline">
-              log in
-            </Link>{" "}
-            for a mock household.
-          </p>
-        )}
-
-        <div className="mt-4 space-y-4">
-          <div className="grid gap-3 md:max-w-xl">
-            {session?.kind === "parent" ? (
-              <div className="rounded-xl border border-emerald-200/80 bg-emerald-50/60 px-3 py-2 text-sm text-emerald-950 dark:border-emerald-500/25 dark:bg-emerald-950/30 dark:text-emerald-100">
-                Signed in as <span className="font-bold">{session.displayName}</span> ({session.email})
-              </div>
-            ) : (
-              <label className="text-sm font-semibold text-slate-700 dark:text-slate-200">
-                Parent profile (fixture)
-                <select
-                  value={parentCrmId}
-                  onChange={(event) => setParentCrmId(event.target.value)}
-                  className="ui-select mt-1 w-full rounded-lg px-2 py-1"
-                >
-                  {fixtureParentIds.map((id) => {
-                    const labelStudent = repository.listStudents().find((s) => s.parentCrmId === id);
-                    return (
-                      <option key={id} value={id}>
-                        {labelStudent ? `${labelStudent.displayName.split(" ")[0]}'s parent (${id})` : id}
-                      </option>
-                    );
-                  })}
-                </select>
-              </label>
-            )}
-          </div>
-
-          <div>
-            <p className="text-sm font-semibold text-slate-700 dark:text-slate-200">Students in this household</p>
-            <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
-              Tap a student to preview their videos and progress here. Student sign-in still uses the dedicated
-              student view.
-            </p>
-            <div className="mt-3 flex flex-wrap gap-2" role="tablist" aria-label="Household students">
-              {children.map((student) => {
-                const active = student.crmId === selectedStudent;
-                return (
-                  <button
-                    key={student.crmId}
-                    type="button"
-                    role="tab"
-                    aria-selected={active}
-                    onClick={() => setSelectedStudent(student.crmId)}
-                    className={`rounded-full border px-4 py-2 text-sm font-bold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/70 disabled:cursor-not-allowed disabled:opacity-50 ${
-                      active
-                        ? "border-indigo-500 bg-indigo-600 text-white shadow-sm dark:border-indigo-400 dark:bg-indigo-500"
-                        : "border-slate-200/90 bg-white text-slate-800 hover:border-indigo-300/80 dark:border-white/10 dark:bg-slate-900/60 dark:text-slate-100 dark:hover:border-indigo-500/40"
-                    }`}
-                  >
-                    {student.displayName}
-                  </button>
-                );
-              })}
-            </div>
-            {!children.length && (
-              <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">No student profiles for this parent.</p>
-            )}
-          </div>
+      <aside className={`sidebar ${drawerOpen ? "open" : ""}`}>
+        <div className="logo">
+          <div className="logo-name">CADENZA</div>
+          <div className="logo-tag">MUSIC STUDIO</div>
         </div>
-      </section>
-
-      {session?.kind === "parent" && accountDetails && (
-        <section className="space-y-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-white/10 dark:bg-slate-900/50">
-          <h2 className="text-lg font-bold text-slate-900 dark:text-white">Household &amp; ids (mock)</h2>
-          <dl className="grid gap-2 text-xs font-mono text-slate-700 dark:text-slate-300 sm:grid-cols-2">
-            <div className="rounded-lg bg-slate-50 p-2 dark:bg-slate-950/50">
-              <dt className="font-sans text-[10px] font-bold uppercase text-slate-500">Organization id</dt>
-              <dd className="break-all">{accountDetails.org?.id ?? "—"}</dd>
-            </div>
-            <div className="rounded-lg bg-slate-50 p-2 dark:bg-slate-950/50">
-              <dt className="font-sans text-[10px] font-bold uppercase text-slate-500">Organization name</dt>
-              <dd className="break-all font-sans text-sm font-semibold">{accountDetails.org?.name ?? "—"}</dd>
-            </div>
-            <div className="rounded-lg bg-slate-50 p-2 dark:bg-slate-950/50">
-              <dt className="font-sans text-[10px] font-bold uppercase text-slate-500">Parent id</dt>
-              <dd className="break-all">{accountDetails.parentRow?.id ?? "—"}</dd>
-            </div>
-            <div className="rounded-lg bg-slate-50 p-2 dark:bg-slate-950/50">
-              <dt className="font-sans text-[10px] font-bold uppercase text-slate-500">Parent CRM id</dt>
-              <dd className="break-all">{session.parentCrmId}</dd>
-            </div>
-          </dl>
-
-          <div className="rounded-xl border border-slate-200/90 bg-slate-50/80 p-4 dark:border-white/10 dark:bg-slate-950/40">
-            <h3 className="text-sm font-bold text-slate-900 dark:text-white">Family members (child ids)</h3>
-            <ul className="mt-2 space-y-2 text-xs">
-              {accountDetails.children.map((c) => (
-                <li
-                  key={c.id}
-                  className="rounded-lg border border-slate-200/80 bg-white p-2 dark:border-white/10 dark:bg-slate-900/60"
-                >
-                  <div className="font-mono text-slate-800 dark:text-slate-200">
-                    <span className="font-sans text-[10px] font-bold uppercase text-slate-500">child id </span>
-                    {c.id}
-                  </div>
-                  <div className="mt-1 font-mono text-slate-700 dark:text-slate-300">
-                    <span className="font-sans text-[10px] font-bold uppercase text-slate-500">screen </span>
-                    {c.screenName}
-                    <span className="mx-2 font-sans text-slate-400">·</span>
-                    <span className="font-sans text-[10px] font-bold uppercase text-slate-500"> studentCrmId </span>
-                    {c.studentCrmId}
-                  </div>
-                  <ChildPasswordRow childId={c.id} onReset={resetChildPassword} onMessage={setFamilyMessage} />
-                </li>
-              ))}
-              {!accountDetails.children.length && (
-                <li className="text-sm text-slate-500 dark:text-slate-400">No family logins yet — add one below.</li>
-              )}
-            </ul>
-          </div>
-
-          <form className="space-y-3 rounded-xl border border-indigo-200/70 bg-indigo-50/50 p-4 dark:border-indigo-500/20 dark:bg-indigo-950/25" onSubmit={submitAddChild}>
-            <h3 className="text-sm font-bold text-indigo-950 dark:text-indigo-100">Add family member</h3>
-            <label className="block text-xs font-semibold text-slate-800 dark:text-slate-200">
-              Display name
-              <input
-                value={newDisplay}
-                onChange={(e) => setNewDisplay(e.target.value)}
-                className="ui-input mt-1 w-full rounded-lg px-2 py-1 text-sm"
-              />
-            </label>
-            <label className="block text-xs font-semibold text-slate-800 dark:text-slate-200">
-              Screen name (unique in org)
-              <input
-                value={newScreen}
-                onChange={(e) => setNewScreen(e.target.value)}
-                className="ui-input mt-1 w-full rounded-lg px-2 py-1 text-sm"
-              />
-            </label>
-            <label className="block text-xs font-semibold text-slate-800 dark:text-slate-200">
-              Password
-              <input
-                type="password"
-                value={newPassword}
-                onChange={(e) => setNewPassword(e.target.value)}
-                className="ui-input mt-1 w-full rounded-lg px-2 py-1 text-sm"
-              />
-            </label>
+        <div className="role-toggle">
+          <select
+            aria-label="Switch app view"
+            className="rt-select"
+            value={appViewOptions.some((option) => option.href === pathname) ? pathname : "/instructor"}
+            onChange={(event) => {
+              const nextPath = event.target.value;
+              if (nextPath) window.location.href = nextPath;
+            }}
+          >
+            {appViewOptions.map((option) => (
+              <option key={option.href} value={option.href}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </div>
+        <nav className="nav">
+          <div className="nav-lbl">Menu</div>
+          {parentNav.map((item) => (
             <button
-              type="submit"
-              className="ui-button-primary rounded-lg px-3 py-2 text-xs font-bold"
+              key={item.id}
+              className={`nav-item ${page === item.id ? "active" : ""}`}
+              type="button"
+              onClick={() => {
+                setPage(item.id);
+                setDrawerOpen(false);
+              }}
             >
-              Save family member
+              <StudioIcon icon={item.icon} className="nav-ico" />
+              <span>{item.label}</span>
+              {item.id === "videos" && videos.length ? <span className="nav-badge">{videos.length}</span> : null}
             </button>
-          </form>
-
-          {familyMessage && (
-            <p className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-800 dark:border-white/10 dark:bg-slate-950/50 dark:text-slate-200">
-              {familyMessage}
-            </p>
-          )}
-        </section>
-      )}
-
-      <section>
-        <h2 className="mb-3 text-lg font-bold text-slate-900 dark:text-white">Recent Videos</h2>
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {videos.map((video) => (
-            <VideoCard
-              key={video.id}
-              video={video}
-              href={`/student/videos/${video.id}`}
-              subtitle="Open student lesson view"
-            />
           ))}
+        </nav>
+        <div className="sidebar-user">
+          <div className="su-inner">
+            <div className="su-avatar">{initials(session?.kind === "parent" ? session.displayName : "Demo Parent")}</div>
+            <div className="min-w-0">
+              <div className="su-name">{session?.kind === "parent" ? session.displayName : "Demo Parent"}</div>
+              <div className="su-role">{session?.kind === "parent" ? session.email : effectiveParentCrmId}</div>
+            </div>
+          </div>
         </div>
-        {!videos.length && (
-          <p className="text-sm text-slate-500 dark:text-slate-400">No videos available yet for this profile.</p>
-        )}
-      </section>
+      </aside>
+
+      <main className="c-main">
+        <div className="topbar">
+          <button className="hamburger" onClick={() => setDrawerOpen(true)} aria-label="Menu" type="button">
+            <span />
+            <span />
+            <span />
+          </button>
+          <div className="page-title">{pageTitle[page]}</div>
+          <div className="topbar-right">
+            <div className="xp-pill">Household · {children.length} students</div>
+            <button className="theme-toggle" onClick={() => setTheme(theme === "dark" ? "light" : "dark")} type="button">
+              <span className="toggle-icon">{theme === "dark" ? "Moon" : "Sun"}</span>
+              <span className="toggle-track"><span className="toggle-knob" /></span>
+              <span className="toggle-lbl">{theme === "dark" ? "Dark" : "Light"}</span>
+            </button>
+          </div>
+        </div>
+
+        <div className="content">
+          {page === "dashboard" ? (
+            <>
+              <section className="studio-hero">
+                <div>
+                  <p className="card-title">Parent command center</p>
+                  <h1>Track progress and family access.</h1>
+                  <p>
+                    Preview student videos, monitor household setup, and manage family logins from the same Cadenza shell.
+                  </p>
+                </div>
+                {session?.kind === "parent" ? (
+                  <span className="badge b-green">{session.displayName}</span>
+                ) : (
+                  <label className="profile-select">
+                    Parent profile
+                    <select value={parentCrmId} onChange={(event) => setParentCrmId(event.target.value)}>
+                      {fixtureParentIds.map((id) => {
+                        const labelStudent = repository.listStudents().find((s) => s.parentCrmId === id);
+                        return (
+                          <option key={id} value={id}>
+                            {labelStudent ? `${labelStudent.displayName.split(" ")[0]}'s parent (${id})` : id}
+                          </option>
+                        );
+                      })}
+                    </select>
+                  </label>
+                )}
+              </section>
+
+              <section className="grid4">
+                <Metric label="Students" value={`${children.length}`} sub="In household" tone="purple" />
+                <Metric label="Videos" value={`${videos.length}`} sub="Selected student" tone="cyan" />
+                <Metric label="Session" value={session?.kind === "parent" ? "Live" : "Demo"} sub="Parent mode" tone="green" />
+                <Metric label="Parent CRM" value={effectiveParentCrmId.split("-").pop() ?? effectiveParentCrmId} sub="Current profile" tone="gold" />
+              </section>
+
+              {!ready || session?.kind !== "parent" ? (
+                <section className="card">
+                  <div className="section-sub">
+                    Demo mode: pick a fixture parent, or <Link href="/auth/signup">sign up</Link> /{" "}
+                    <Link href="/auth/login">log in</Link> for a mock household.
+                  </div>
+                </section>
+              ) : null}
+
+              <section className="card">
+                <div className="card-header">
+                  <div>
+                    <div className="card-title">Students in this household</div>
+                    <div className="section-sub">Choose a student to drive video preview and metrics.</div>
+                  </div>
+                </div>
+                <div className="tabs">
+                  {children.map((student) => (
+                    <button
+                      key={student.crmId}
+                      type="button"
+                      className={`tab ${student.crmId === selectedStudent ? "active" : ""}`}
+                      onClick={() => setSelectedStudent(student.crmId)}
+                    >
+                      {student.displayName}
+                    </button>
+                  ))}
+                </div>
+                {!children.length ? <p className="empty-copy">No student profiles for this parent.</p> : null}
+              </section>
+            </>
+          ) : null}
+
+          {page === "family" ? (
+            <>
+              {session?.kind === "parent" && accountDetails ? (
+                <section className="card">
+                  <div className="card-header">
+                    <div>
+                      <div className="card-title">Household ids (mock)</div>
+                      <div className="section-sub">Organization and parent identifiers for the active account.</div>
+                    </div>
+                  </div>
+                  <dl className="grid2 compact-grid">
+                    <Metric label="Organization id" value={accountDetails.org?.id ?? "—"} sub="Org id" tone="purple" />
+                    <Metric label="Organization" value={accountDetails.org?.name ?? "—"} sub="Name" tone="gold" />
+                    <Metric label="Parent id" value={accountDetails.parentRow?.id ?? "—"} sub="Internal id" tone="cyan" />
+                    <Metric label="Parent CRM" value={session.parentCrmId} sub="CRM id" tone="green" />
+                  </dl>
+                </section>
+              ) : null}
+
+              <section className="card">
+                <div className="card-header">
+                  <div>
+                    <div className="card-title">Family members (child ids)</div>
+                    <div className="section-sub">Reset passwords or review child login metadata.</div>
+                  </div>
+                </div>
+                {accountDetails?.children.map((child) => (
+                  <div key={child.id} className="listen-row">
+                    <div>
+                      <strong>{child.screenName}</strong>
+                      <span>child id: {child.id}</span>
+                      <span>studentCrmId: {child.studentCrmId}</span>
+                    </div>
+                    <ChildPasswordRow childId={child.id} onReset={resetChildPassword} onMessage={setFamilyMessage} />
+                  </div>
+                ))}
+                {!accountDetails?.children.length ? <p className="empty-copy">No family logins yet.</p> : null}
+              </section>
+
+              <section className="card">
+                <div className="card-header">
+                  <div>
+                    <div className="card-title">Add family member</div>
+                    <div className="section-sub">Creates a new child login under your parent account.</div>
+                  </div>
+                </div>
+                <form className="instructor-form-grid" onSubmit={submitAddChild}>
+                  <label className="form-grp">
+                    <span className="form-lbl">Display name</span>
+                    <input value={newDisplay} onChange={(e) => setNewDisplay(e.target.value)} className="inp" />
+                  </label>
+                  <label className="form-grp">
+                    <span className="form-lbl">Screen name</span>
+                    <input value={newScreen} onChange={(e) => setNewScreen(e.target.value)} className="inp" />
+                  </label>
+                  <label className="form-grp">
+                    <span className="form-lbl">Password</span>
+                    <input type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} className="inp" />
+                  </label>
+                  <div className="modal-acts">
+                    <button type="submit" className="btn btn-primary">Save family member</button>
+                  </div>
+                </form>
+                {familyMessage ? <p className="section-sub">{familyMessage}</p> : null}
+              </section>
+            </>
+          ) : null}
+
+          {page === "videos" ? (
+            <section className="card">
+              <div className="card-header">
+                <div>
+                  <div className="card-title">Recent videos</div>
+                  <div className="section-sub">
+                    {selectedStudentRow ? `${selectedStudentRow.displayName} · ${videos.length} clips` : "Select a student"}
+                  </div>
+                </div>
+              </div>
+              <div className="video-grid">
+                {videos.map((video) => (
+                  <VideoCard
+                    key={video.id}
+                    video={video}
+                    href={`/student/videos/${video.id}`}
+                    subtitle="Open student lesson view"
+                  />
+                ))}
+              </div>
+              {!videos.length ? <p className="empty-copy">No videos available yet for this profile.</p> : null}
+            </section>
+          ) : null}
+        </div>
+      </main>
+    </div>
+  );
+}
+
+function Metric({ label, value, sub, tone }: { label: string; value: string; sub: string; tone: "purple" | "gold" | "green" | "cyan" }) {
+  const colors = {
+    purple: "var(--accent2)",
+    gold: "var(--gold)",
+    green: "var(--green)",
+    cyan: "var(--cyan)",
+  };
+  return (
+    <div className="metric">
+      <div className="metric-lbl">{label}</div>
+      <div className="metric-val" style={{ color: colors[tone] }}>{value}</div>
+      <div className="metric-sub">{sub}</div>
     </div>
   );
 }
@@ -271,7 +393,7 @@ function ChildPasswordRow({
   const [pw, setPw] = useState(MOCK_DEMO_PASSWORD);
   return (
     <form
-      className="mt-2 flex flex-wrap items-end gap-2 border-t border-slate-100 pt-2 dark:border-white/5"
+      className="mt-2 flex flex-wrap items-end gap-2"
       onSubmit={(e) => {
         e.preventDefault();
         onMessage(null);
@@ -280,18 +402,18 @@ function ChildPasswordRow({
         else onMessage("Password updated for that family member.");
       }}
     >
-      <label className="min-w-[140px] flex-1 text-[10px] font-bold uppercase text-slate-500 dark:text-slate-400">
-        New password (mock)
+      <label className="form-grp">
+        <span className="form-lbl">New password</span>
         <input
           type="password"
           value={pw}
           onChange={(e) => setPw(e.target.value)}
-          className="ui-input mt-0.5 w-full rounded px-1.5 py-1 text-xs"
+          className="inp"
         />
       </label>
       <button
         type="submit"
-        className="ui-button-secondary rounded-md px-2 py-1 text-[10px] font-bold uppercase tracking-wide"
+        className="btn btn-sm"
       >
         Update
       </button>

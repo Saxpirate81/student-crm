@@ -1,58 +1,190 @@
 "use client";
 
-import Link from "next/link";
+import { usePathname } from "next/navigation";
+import { useState } from "react";
+import { ProducerMatrixView } from "@/components/producer/ProducerMatrixView";
+import { ProducerPlaybookView } from "@/components/producer/ProducerPlaybookView";
+import { ProducerQueueView } from "@/components/producer/ProducerQueueView";
+import { useProducerWorkspace } from "@/hooks/useProducerWorkspace";
 import { useAuth } from "@/lib/auth/auth-context";
 
+type ProducerPageId = "queue" | "playbook" | "matrix";
+
+const producerNav: Array<{ id: ProducerPageId; label: string; icon: keyof typeof icons }> = [
+  { id: "queue", label: "View Queue", icon: "clip" },
+  { id: "playbook", label: "View Playbook", icon: "book" },
+  { id: "matrix", label: "View Matrix", icon: "users" },
+];
+
+const appViewOptions = [
+  { href: "/instructor", label: "Instructor" },
+  { href: "/student", label: "Student" },
+  { href: "/parent", label: "Parent" },
+  { href: "/admin", label: "Admin" },
+  { href: "/producer", label: "Producer" },
+];
+
+const icons = {
+  clip: (
+    <>
+      <rect x="3" y="2" width="10" height="13" rx="1.5" />
+      <path d="M6 2a2 2 0 0 1 4 0M6 7h4M6 10h3" />
+    </>
+  ),
+  book: (
+    <>
+      <path d="M2 3.5A1.5 1.5 0 0 1 3.5 2H13v11H3.5A1.5 1.5 0 0 0 2 14.5z" />
+      <path d="M13 2v11M4.5 5h6M4.5 8h6" />
+    </>
+  ),
+  users: (
+    <>
+      <circle cx="6" cy="6" r="2.2" />
+      <circle cx="11.2" cy="6.8" r="1.8" />
+      <path d="M2.5 13c0-2 2-3.4 3.5-3.4S9.5 11 9.5 13M9 13c.1-1.4 1.4-2.5 2.9-2.5 1.4 0 2.6 1 2.6 2.5" />
+    </>
+  ),
+};
+
+function StudioIcon({ icon, className = "" }: { icon: keyof typeof icons; className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+      {icons[icon]}
+    </svg>
+  );
+}
+
 export default function ProducerPage() {
+  const pathname = usePathname();
   const { session, ready } = useAuth();
+  const [theme, setTheme] = useState<"dark" | "light">("dark");
+  const [page, setPage] = useState<ProducerPageId>("queue");
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const { playbookVersion, setPlaybookVersion, rules, setRules, tasks, setTasks, playbookVersions } = useProducerWorkspace();
+
+  const pageTitle: Record<ProducerPageId, string> = {
+    queue: "View Queue",
+    playbook: "View Playbook",
+    matrix: "View Matrix",
+  };
 
   return (
-    <div className="space-y-6">
-      <section className="rounded-2xl border border-slate-200/90 bg-white p-6 shadow-sm dark:border-white/10 dark:bg-slate-900/50">
-        <p className="text-[11px] font-bold uppercase tracking-widest text-violet-600 dark:text-violet-400">
-          Producer
-        </p>
-        <h1 className="mt-2 text-2xl font-black text-slate-900 dark:text-white">Producer workspace</h1>
-        <p className="mt-2 max-w-2xl text-sm text-slate-600 dark:text-slate-400">
-          This area is for studio administrators and producers. The command surface is not built yet; next we will
-          move admin-style tools here and wire real permissions.
-        </p>
+    <div className="cadenza-app" data-theme={theme}>
+      <div className={`sidebar-overlay ${drawerOpen ? "open" : ""}`} onClick={() => setDrawerOpen(false)} />
 
-        {ready && session?.kind !== "producer" && (
-          <p className="mt-4 rounded-xl border border-violet-200/80 bg-violet-50/80 px-3 py-2 text-sm text-violet-950 dark:border-violet-500/25 dark:bg-violet-950/35 dark:text-violet-100">
-            Sign in with the producer tab on{" "}
-            <Link href="/auth/login" className="font-bold underline-offset-2 hover:underline">
-              Log in
-            </Link>{" "}
-            to attach a mock producer session to this view.
-          </p>
-        )}
-
-        {ready && session?.kind === "producer" && (
-          <p className="mt-4 rounded-xl border border-emerald-200/80 bg-emerald-50/60 px-3 py-2 text-sm text-emerald-950 dark:border-emerald-500/25 dark:bg-emerald-950/30 dark:text-emerald-100">
-            Signed in as <span className="font-bold">{session.displayName}</span> ({session.email})
-          </p>
-        )}
-      </section>
-
-      {ready && session?.kind === "producer" && (
-        <section className="rounded-2xl border border-dashed border-slate-300/90 bg-slate-50/50 p-6 dark:border-white/15 dark:bg-slate-950/40">
-          <h2 className="text-lg font-bold text-slate-900 dark:text-white">Coming next</h2>
-          <ul className="mt-3 list-inside list-disc space-y-1 text-sm text-slate-600 dark:text-slate-400">
-            <li>Organization-wide publishing and media workflows</li>
-            <li>Producer-specific dashboards (separate from household parent tools)</li>
-          </ul>
-          <p className="mt-4 text-sm text-slate-600 dark:text-slate-400">
-            Until then, the legacy mock admin desk remains available.
-          </p>
-          <Link
-            href="/admin"
-            className="mt-3 inline-flex rounded-xl bg-violet-600 px-4 py-2 text-sm font-bold text-white hover:bg-violet-500 dark:bg-violet-500 dark:hover:bg-violet-400"
+      <aside className={`sidebar ${drawerOpen ? "open" : ""}`}>
+        <div className="logo">
+          <div className="logo-name">CADENZA</div>
+          <div className="logo-tag">MUSIC STUDIO</div>
+        </div>
+        <div className="role-toggle">
+          <select
+            aria-label="Switch app view"
+            className="rt-select"
+            value={appViewOptions.some((option) => option.href === pathname) ? pathname : "/instructor"}
+            onChange={(event) => {
+              const nextPath = event.target.value;
+              if (nextPath) window.location.href = nextPath;
+            }}
           >
-            Open admin command center
-          </Link>
-        </section>
-      )}
+            {appViewOptions.map((option) => (
+              <option key={option.href} value={option.href}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </div>
+        <nav className="nav">
+          <div className="nav-lbl">Producer</div>
+          {producerNav.map((item) => (
+            <button
+              key={item.id}
+              className={`nav-item ${page === item.id ? "active" : ""}`}
+              type="button"
+              onClick={() => {
+                setPage(item.id);
+                setDrawerOpen(false);
+              }}
+            >
+              <StudioIcon icon={item.icon} className="nav-ico" />
+              <span>{item.label}</span>
+            </button>
+          ))}
+        </nav>
+        <div className="sidebar-user">
+          <div className="su-inner">
+            <div className="su-avatar">PR</div>
+            <div className="min-w-0">
+              <div className="su-name">{session?.kind === "producer" ? session.displayName : "Producer Preview"}</div>
+              <div className="su-role">{session?.kind === "producer" ? session.email : "Scaffold Mode"}</div>
+            </div>
+          </div>
+        </div>
+      </aside>
+
+      <main className="c-main">
+        <div className="topbar">
+          <button className="hamburger" onClick={() => setDrawerOpen(true)} aria-label="Menu" type="button">
+            <span />
+            <span />
+            <span />
+          </button>
+          <div className="page-title">{pageTitle[page]}</div>
+          <div className="topbar-right">
+            <div className="xp-pill">Producer Console</div>
+            <button className="theme-toggle" onClick={() => setTheme(theme === "dark" ? "light" : "dark")} type="button">
+              <span className="toggle-icon">{theme === "dark" ? "Moon" : "Sun"}</span>
+              <span className="toggle-track"><span className="toggle-knob" /></span>
+              <span className="toggle-lbl">{theme === "dark" ? "Dark" : "Light"}</span>
+            </button>
+          </div>
+        </div>
+
+        <div className="content">
+          <section className="studio-hero instructor-hero">
+            <div>
+              <p className="card-title">Producer workspace scaffold</p>
+              <h1>Queue, playbook, and matrix foundation is in place.</h1>
+              <p>
+                This is the first migration step from the Google Script webapp. Next we wire live data and actions.
+              </p>
+            </div>
+            {ready && session?.kind === "producer" ? (
+              <span className="badge b-green">Signed in as {session.displayName}</span>
+            ) : (
+              <span className="badge b-gold">Preview mode</span>
+            )}
+          </section>
+
+          {page === "queue" ? (
+            <ProducerQueueView
+              tasks={tasks}
+              setTasks={setTasks}
+              playbookVersion={playbookVersion}
+              setPlaybookVersion={setPlaybookVersion}
+              playbookVersions={playbookVersions}
+            />
+          ) : null}
+          {page === "playbook" ? (
+            <ProducerPlaybookView
+              rules={rules}
+              setRules={setRules}
+              playbookVersion={playbookVersion}
+              setPlaybookVersion={setPlaybookVersion}
+              playbookVersions={playbookVersions}
+            />
+          ) : null}
+          {page === "matrix" ? (
+            <ProducerMatrixView
+              rules={rules}
+              tasks={tasks}
+              playbookVersion={playbookVersion}
+              setPlaybookVersion={setPlaybookVersion}
+              playbookVersions={playbookVersions}
+            />
+          ) : null}
+        </div>
+      </main>
     </div>
   );
 }
