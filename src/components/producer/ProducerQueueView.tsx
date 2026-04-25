@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { Dispatch, SetStateAction } from "react";
 import type { PlaybookVersion, ProducerQueueTask, ProducerTaskType } from "@/lib/producer/mock-queue";
 
@@ -19,14 +19,27 @@ function getPhase(triggerLesson: number): "Danger Zone" | "The Plateau" {
   return triggerLesson <= 15 ? "Danger Zone" : "The Plateau";
 }
 
-function timeAgo(iso: string) {
-  const ms = Date.now() - new Date(iso).getTime();
+function timeAgo(iso: string, nowMs: number) {
+  const ms = nowMs - new Date(iso).getTime();
   const min = Math.floor(ms / 60000);
   if (min < 1) return "Just now";
   if (min < 60) return `${min} min ago`;
   const hr = Math.floor(min / 60);
   if (hr < 24) return `${hr} hr ago`;
   return `${Math.floor(hr / 24)} day${hr >= 48 ? "s" : ""} ago`;
+}
+
+function TimeInQueue({ iso }: { iso: string }) {
+  const [label, setLabel] = useState("—");
+
+  useEffect(() => {
+    const tick = () => setLabel(timeAgo(iso, Date.now()));
+    tick();
+    const id = window.setInterval(tick, 30_000);
+    return () => window.clearInterval(id);
+  }, [iso]);
+
+  return <span className="text-xs text-slate-400">{label}</span>;
 }
 
 export function ProducerQueueView({
@@ -210,7 +223,9 @@ export function ProducerQueueView({
                   <div className="font-semibold">{task.taskName}</div>
                   <div className="text-xs text-slate-400">{task.taskType} • {getPhase(task.triggerLesson)}</div>
                 </td>
-                <td className="py-3 text-xs text-slate-400">{timeAgo(task.createdAt)}</td>
+                <td className="py-3">
+                  <TimeInQueue iso={task.createdAt} />
+                </td>
                 <td className="py-3 text-right">
                   <button type="button" className="btn btn-sm" onClick={() => setActiveTask(task)}>
                     Review

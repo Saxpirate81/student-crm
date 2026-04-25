@@ -3,6 +3,7 @@
 import { usePathname } from "next/navigation";
 import { useState } from "react";
 import { VideoCard } from "@/components/VideoCard";
+import { CadenzaMessageBoard } from "@/components/messaging/CadenzaMessageBoard";
 import { useRepository } from "@/lib/useRepository";
 
 const FALLBACK_VIDEO = "https://www.w3schools.com/html/mov_bbb.mp4";
@@ -165,6 +166,8 @@ export default function AdminPage() {
             </button>
           </div>
         </div>
+
+        <CadenzaMessageBoard viewerRole="admin" />
 
         <div className="content">
           {page === "dashboard" ? (

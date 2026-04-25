@@ -10,6 +10,7 @@ export type ProducerPlaybookRule = {
   playbookVersion: PlaybookVersion;
   learningTrack: LearningTrack;
   targetLesson: number;
+  placement: "lesson" | "between";
   taskName: string;
   taskType: ProducerTaskType;
   executionMode: ExecutionMode;
@@ -25,6 +26,7 @@ const seedRules: ProducerPlaybookRule[] = [
     playbookVersion: "Current",
     learningTrack: "Kids",
     targetLesson: 4,
+    placement: "lesson",
     taskName: "Parent Pulse Follow-up",
     taskType: "In-Room Milestone",
     executionMode: "Manual",
@@ -38,6 +40,7 @@ const seedRules: ProducerPlaybookRule[] = [
     playbookVersion: "Current",
     learningTrack: "All",
     targetLesson: 6,
+    placement: "between",
     taskName: "Digital Showcase Review",
     taskType: "Media Upload",
     executionMode: "Manual",
@@ -51,6 +54,7 @@ const seedRules: ProducerPlaybookRule[] = [
     playbookVersion: "Current",
     learningTrack: "Teens",
     targetLesson: 16,
+    placement: "between",
     taskName: "Plateau Retention Alert",
     taskType: "System Action",
     executionMode: "Automated",
@@ -64,6 +68,7 @@ const seedRules: ProducerPlaybookRule[] = [
     playbookVersion: "Spring 2026",
     learningTrack: "Adults",
     targetLesson: 11,
+    placement: "lesson",
     taskName: "Milestone Completion Check",
     taskType: "In-Room Milestone",
     executionMode: "Manual",

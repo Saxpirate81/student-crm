@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import { ExerciseCard } from "@/components/music/ExerciseCard";
 import { ExerciseStaffComposer } from "@/components/music/ExerciseStaffComposer";
+import { CadenzaMessageBoard } from "@/components/messaging/CadenzaMessageBoard";
 import type { StudentVideo } from "@/lib/domain/types";
 import {
   addListeningTrack,
@@ -328,6 +329,8 @@ export default function InstructorPage() {
             </button>
           </div>
         </div>
+
+        <CadenzaMessageBoard viewerRole="instructor" />
 
         <div className="content">
           {page === "dashboard" ? (

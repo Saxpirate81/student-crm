@@ -18,6 +18,7 @@ import {
   type NewsUpdate,
 } from "@/lib/listening/mock-listening-store";
 import { useRepository } from "@/lib/useRepository";
+import { CadenzaMessageBoard } from "@/components/messaging/CadenzaMessageBoard";
 
 type StudioPage = "dashboard" | "assignments" | "practice" | "listening" | "achievements" | "progress";
 
@@ -395,6 +396,8 @@ export default function StudentPage() {
             </button>
           </div>
         </div>
+
+        <CadenzaMessageBoard viewerRole="student" />
 
         <div className="content">
           {page === "dashboard" ? (

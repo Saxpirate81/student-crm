@@ -5,6 +5,7 @@ import { useState } from "react";
 import { ProducerMatrixView } from "@/components/producer/ProducerMatrixView";
 import { ProducerPlaybookView } from "@/components/producer/ProducerPlaybookView";
 import { ProducerQueueView } from "@/components/producer/ProducerQueueView";
+import { CadenzaMessageBoard } from "@/components/messaging/CadenzaMessageBoard";
 import { useProducerWorkspace } from "@/hooks/useProducerWorkspace";
 import { useAuth } from "@/lib/auth/auth-context";
 
@@ -139,6 +140,8 @@ export default function ProducerPage() {
             </button>
           </div>
         </div>
+
+        <CadenzaMessageBoard viewerRole="producer" />
 
         <div className="content">
           <section className="studio-hero instructor-hero">

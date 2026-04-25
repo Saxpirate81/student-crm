@@ -14,11 +14,13 @@ import type { PlaybookVersion, ProducerTaskType } from "@/lib/producer/mock-queu
 type RuleDraft = Omit<ProducerPlaybookRule, "ruleId">;
 
 const TRACKS: LearningTrack[] = ["All", "Kids", "Teens", "Adults", "Cross-Trainer"];
+const JOURNEY_TRACKS: Exclude<LearningTrack, "All">[] = ["Kids", "Teens", "Adults", "Cross-Trainer"];
 
 const emptyDraft: RuleDraft = {
   playbookVersion: "Current",
   learningTrack: "All",
   targetLesson: 1,
+  placement: "lesson",
   taskName: "",
   taskType: "In-Room Milestone",
   executionMode: "Manual",
@@ -44,6 +46,8 @@ export function ProducerPlaybookView({
   playbookVersions,
 }: ProducerPlaybookViewProps) {
   const [trackFilter, setTrackFilter] = useState<LearningTrack>("All");
+  const [timelineTrackFilter, setTimelineTrackFilter] = useState<LearningTrack>("All");
+  const [isTimelineOpen, setIsTimelineOpen] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingRuleId, setEditingRuleId] = useState<string | null>(null);
   const [draft, setDraft] = useState<RuleDraft>(emptyDraft);
@@ -56,9 +60,9 @@ export function ProducerPlaybookView({
       .sort((a, b) => a.targetLesson - b.targetLesson || a.taskName.localeCompare(b.taskName));
   }, [rules, playbookVersion, trackFilter]);
 
-  const openNewRule = () => {
+  const openNewRule = (defaults?: Partial<RuleDraft>) => {
     setEditingRuleId(null);
-    setDraft({ ...emptyDraft, playbookVersion });
+    setDraft({ ...emptyDraft, playbookVersion, ...defaults });
     setIsModalOpen(true);
   };
 
@@ -68,6 +72,7 @@ export function ProducerPlaybookView({
       playbookVersion: rule.playbookVersion,
       learningTrack: rule.learningTrack,
       targetLesson: rule.targetLesson,
+      placement: rule.placement,
       taskName: rule.taskName,
       taskType: rule.taskType,
       executionMode: rule.executionMode,
@@ -112,6 +117,33 @@ export function ProducerPlaybookView({
     setRules((current) => current.map((rule) => (rule.ruleId === ruleId ? { ...rule, status } : rule)));
   };
 
+  const timelineRules = useMemo(() => {
+    return rules.filter(
+      (rule) =>
+        rule.playbookVersion === playbookVersion &&
+        rule.status !== "Archived" &&
+        (timelineTrackFilter === "All" || rule.learningTrack === timelineTrackFilter || rule.learningTrack === "All"),
+    );
+  }, [rules, playbookVersion, timelineTrackFilter]);
+
+  const maxLesson = useMemo(() => {
+    const highest = timelineRules.reduce((max, rule) => Math.max(max, rule.targetLesson), 1);
+    return Math.max(18, highest + 2);
+  }, [timelineRules]);
+
+  const handleDropRule = (
+    ruleId: string,
+    track: Exclude<LearningTrack, "All">,
+    lesson: number,
+    placement: "lesson" | "between",
+  ) => {
+    setRules((current) =>
+      current.map((rule) =>
+        rule.ruleId === ruleId ? { ...rule, learningTrack: track, targetLesson: lesson, placement } : rule,
+      ),
+    );
+  };
+
   return (
     <section className="card">
       <div className="card-header">
@@ -130,10 +162,10 @@ export function ProducerPlaybookView({
           <button type="button" className="btn btn-sm" onClick={retireCurrentPlaybook} disabled={playbookVersion !== "Current"}>
             Retire Current
           </button>
-          <button type="button" className="btn btn-sm" disabled>
+          <button type="button" className="btn btn-sm" onClick={() => setIsTimelineOpen(true)}>
             Journey Map
           </button>
-          <button type="button" className="btn btn-primary btn-sm" onClick={openNewRule}>
+          <button type="button" className="btn btn-primary btn-sm" onClick={() => openNewRule()}>
             New Rule
           </button>
         </div>
@@ -174,7 +206,7 @@ export function ProducerPlaybookView({
                 <td className="py-3">
                   <div className="font-semibold">{rule.taskName}</div>
                   <div className="text-xs text-slate-400">
-                    {rule.taskType} • {rule.assignee}
+                    {rule.taskType} • {rule.assignee} • {rule.placement === "between" ? "In-between lessons" : "On lesson"}
                   </div>
                 </td>
                 <td className="py-3">{rule.executionMode}</td>
@@ -211,7 +243,7 @@ export function ProducerPlaybookView({
       {!filteredRules.length ? <p className="empty-copy">No active rules match this playbook + track filter.</p> : null}
 
       {isModalOpen ? (
-        <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/70 p-4">
+        <div className="fixed inset-0 z-[160] flex items-center justify-center bg-black/70 p-4">
           <div className="card max-h-[90vh] w-full max-w-4xl overflow-y-auto">
             <div className="card-header">
               <div className="card-title">{editingRuleId ? "Edit Rule" : "New Rule"}</div>
@@ -258,6 +290,17 @@ export function ProducerPlaybookView({
                   onChange={(event) => setDraft((d) => ({ ...d, targetLesson: Number.parseInt(event.target.value || "1", 10) }))}
                 />
               </label>
+              <label className="form-grp">
+                <span className="form-lbl">Placement</span>
+                <select
+                  className="inp"
+                  value={draft.placement}
+                  onChange={(event) => setDraft((d) => ({ ...d, placement: event.target.value as "lesson" | "between" }))}
+                >
+                  <option value="lesson">On lesson</option>
+                  <option value="between">In-between lessons</option>
+                </select>
+              </label>
               <label className="form-grp wide">
                 <span className="form-lbl">Task name</span>
                 <input className="inp" value={draft.taskName} onChange={(event) => setDraft((d) => ({ ...d, taskName: event.target.value }))} />
@@ -287,17 +330,206 @@ export function ProducerPlaybookView({
               </label>
               <label className="form-grp wide">
                 <span className="form-lbl">Teacher action plan</span>
-                <textarea className="inp" value={draft.teacherDescription} onChange={(event) => setDraft((d) => ({ ...d, teacherDescription: event.target.value }))} />
+                <textarea
+                  className="inp"
+                  placeholder="Example: During lesson closeout, confirm milestone completion, note confidence level, and flag parent follow-up if practice quality dropped."
+                  value={draft.teacherDescription}
+                  onChange={(event) => setDraft((d) => ({ ...d, teacherDescription: event.target.value }))}
+                />
               </label>
               <label className="form-grp wide">
                 <span className="form-lbl">Ops / system action plan</span>
-                <textarea className="inp" value={draft.opsDescription} onChange={(event) => setDraft((d) => ({ ...d, opsDescription: event.target.value }))} />
+                <textarea
+                  className="inp"
+                  placeholder="Example: Send parent recap email within 24 hours, update queue status, and create retention alert if pulse score is below threshold."
+                  value={draft.opsDescription}
+                  onChange={(event) => setDraft((d) => ({ ...d, opsDescription: event.target.value }))}
+                />
               </label>
             </div>
             <div className="modal-acts">
               <button type="button" className="btn btn-primary" onClick={saveRule}>
                 Save Rule
               </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {isTimelineOpen ? (
+        <div className="fixed inset-0 z-[130] flex items-center justify-center bg-black/70 p-3">
+          <div className="card h-[92vh] w-full max-w-[98vw] overflow-hidden p-0">
+            <div className="card-header border-b border-white/10 px-4 py-3">
+              <div>
+                <div className="card-title">Curriculum Journey Map</div>
+                <div className="section-sub">Drag rules between lesson points to reposition by track and trigger lesson.</div>
+              </div>
+              <div className="flex items-center gap-2">
+                <select className="inp" value={playbookVersion} onChange={(event) => setPlaybookVersion(event.target.value)}>
+                  {playbookVersions.map((version) => (
+                    <option key={version} value={version}>
+                      {version}
+                    </option>
+                  ))}
+                </select>
+                <button type="button" className="btn btn-sm" onClick={() => setIsTimelineOpen(false)}>
+                  Close
+                </button>
+              </div>
+            </div>
+
+            <div className="border-b border-white/10 px-4 py-3">
+              <div className="tabs">
+                <button
+                  type="button"
+                  className={`tab ${timelineTrackFilter === "All" ? "active" : ""}`}
+                  onClick={() => setTimelineTrackFilter("All")}
+                >
+                  All Tracks
+                </button>
+                {JOURNEY_TRACKS.map((track) => (
+                  <button
+                    key={track}
+                    type="button"
+                    className={`tab ${timelineTrackFilter === track ? "active" : ""}`}
+                    onClick={() => setTimelineTrackFilter(track)}
+                  >
+                    {track}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="h-[calc(92vh-130px)] overflow-y-auto p-4">
+              <div className="space-y-5">
+                {JOURNEY_TRACKS.filter((track) => timelineTrackFilter === "All" || timelineTrackFilter === track).map((track) => (
+                  <section key={track} className="rounded-2xl border border-white/10 bg-black/10 p-3">
+                    <div className="mb-2 text-sm font-bold">{track}</div>
+                    <div className="overflow-x-auto">
+                      <div className="flex min-w-max gap-3 pb-2">
+                        {Array.from({ length: maxLesson }, (_, idx) => idx + 1).map((lesson) => {
+                          const lessonBucket = timelineRules.filter(
+                            (rule) =>
+                              rule.targetLesson === lesson &&
+                              rule.placement === "lesson" &&
+                              (rule.learningTrack === track || rule.learningTrack === "All"),
+                          );
+                          const betweenBucket = timelineRules.filter(
+                            (rule) =>
+                              rule.targetLesson === lesson &&
+                              rule.placement === "between" &&
+                              (rule.learningTrack === track || rule.learningTrack === "All"),
+                          );
+                          return (
+                            <div key={`${track}-${lesson}`} className="flex items-start gap-2">
+                              <div
+                                className="w-44 rounded-xl border border-dashed border-white/15 bg-black/20 p-2"
+                                onDragOver={(event) => event.preventDefault()}
+                                onDrop={(event) => {
+                                  const ruleId = event.dataTransfer.getData("text/rule-id");
+                                  if (ruleId) handleDropRule(ruleId, track, lesson, "lesson");
+                                }}
+                              >
+                                <div className="mb-2 flex items-center justify-between">
+                                  <span className="badge b-cyan">L{lesson}</span>
+                                  <button
+                                    type="button"
+                                    className="btn btn-sm"
+                                    onClick={() => openNewRule({ learningTrack: track, targetLesson: lesson, placement: "lesson" })}
+                                  >
+                                    +
+                                  </button>
+                                </div>
+                                <div className="space-y-2">
+                                  {lessonBucket.map((rule) => (
+                                    <div
+                                      key={rule.ruleId}
+                                      draggable
+                                      onDragStart={(event) => event.dataTransfer.setData("text/rule-id", rule.ruleId)}
+                                      className={`cursor-move rounded-lg border p-2 text-xs ${
+                                        rule.assignee === "Ops"
+                                          ? "border-emerald-500/40 bg-emerald-500/10"
+                                          : rule.assignee === "Teacher"
+                                            ? "border-indigo-500/40 bg-indigo-500/10"
+                                            : "border-purple-500/40 bg-purple-500/10"
+                                      }`}
+                                      title="Drag to move this rule"
+                                    >
+                                      <div className="font-semibold">{rule.taskName}</div>
+                                      <div className="text-[10px] text-slate-300">
+                                        {rule.assignee} • {rule.executionMode} • {rule.taskType}
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+
+                              {lesson < maxLesson ? (
+                                <div className="w-44">
+                                  <div className="mb-2 mt-2 flex h-7 items-center justify-center gap-1 text-xs text-slate-400">
+                                    <span>→</span>
+                                    <span>Between L{lesson} and L{lesson + 1}</span>
+                                    <span>→</span>
+                                  </div>
+                                  <div
+                                    className="rounded-xl border border-dashed border-white/15 bg-black/20 p-2"
+                                    onDragOver={(event) => event.preventDefault()}
+                                    onDrop={(event) => {
+                                      const ruleId = event.dataTransfer.getData("text/rule-id");
+                                      if (ruleId) handleDropRule(ruleId, track, lesson, "between");
+                                    }}
+                                  >
+                                    <div className="mb-2 flex items-center justify-between">
+                                      <span className="badge b-purple">Queue</span>
+                                      <button
+                                        type="button"
+                                        className="btn btn-sm"
+                                        onClick={() =>
+                                          openNewRule({
+                                            learningTrack: track,
+                                            targetLesson: lesson,
+                                            placement: "between",
+                                            assignee: "Ops",
+                                          })
+                                        }
+                                      >
+                                        +
+                                      </button>
+                                    </div>
+                                    <div className="space-y-2">
+                                      {betweenBucket.map((rule) => (
+                                        <div
+                                          key={rule.ruleId}
+                                          draggable
+                                          onDragStart={(event) => event.dataTransfer.setData("text/rule-id", rule.ruleId)}
+                                          className={`cursor-move rounded-lg border p-2 text-xs ${
+                                            rule.assignee === "Ops"
+                                              ? "border-emerald-500/40 bg-emerald-500/10"
+                                              : rule.assignee === "Teacher"
+                                                ? "border-indigo-500/40 bg-indigo-500/10"
+                                                : "border-purple-500/40 bg-purple-500/10"
+                                          }`}
+                                          title="Drag to move this queue task"
+                                        >
+                                          <div className="font-semibold">{rule.taskName}</div>
+                                          <div className="text-[10px] text-slate-300">
+                                            {rule.assignee} • {rule.executionMode} • {rule.taskType}
+                                          </div>
+                                        </div>
+                                      ))}
+                                      {!betweenBucket.length ? <div className="text-[10px] text-slate-500">No in-between queue tasks</div> : null}
+                                    </div>
+                                  </div>
+                                </div>
+                              ) : null}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </section>
+                ))}
+              </div>
             </div>
           </div>
         </div>

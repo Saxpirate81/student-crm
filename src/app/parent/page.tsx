@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { VideoCard } from "@/components/VideoCard";
+import { CadenzaMessageBoard } from "@/components/messaging/CadenzaMessageBoard";
 import { MOCK_DEMO_PASSWORD } from "@/lib/auth/constants";
 import { getAccountDetailsForParent } from "@/lib/auth/mock-auth-store";
 import { useAuth } from "@/lib/auth/auth-context";
@@ -197,6 +198,8 @@ export default function ParentPage() {
             </button>
           </div>
         </div>
+
+        <CadenzaMessageBoard viewerRole="parent" />
 
         <div className="content">
           {page === "dashboard" ? (
