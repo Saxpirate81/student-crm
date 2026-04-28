@@ -3,12 +3,14 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
+import { ActivityFeed } from "@/components/parent/ActivityFeed";
 import { VideoCard } from "@/components/VideoCard";
 import { CadenzaMessageBoard } from "@/components/messaging/CadenzaMessageBoard";
 import { MOCK_DEMO_PASSWORD } from "@/lib/auth/constants";
 import { getAccountDetailsForParent } from "@/lib/auth/mock-auth-store";
 import { useAuth } from "@/lib/auth/auth-context";
 import { useRepository } from "@/lib/useRepository";
+import { useRotatingHeroHeadline } from "@/hooks/useRotatingHeroHeadline";
 
 type ParentPageId = "dashboard" | "family" | "videos";
 
@@ -72,6 +74,9 @@ export default function ParentPage() {
 
   const effectiveParentCrmId = session?.kind === "parent" ? session.parentCrmId : parentCrmId;
 
+  const parentHeroName = session?.kind === "parent" ? session.displayName : "Jordan Lee";
+  const parentHeadline = useRotatingHeroHeadline("parent", parentHeroName);
+
   const children = useMemo(() => {
     void version;
     return repository.listStudents().filter((student) => student.parentCrmId === effectiveParentCrmId);
@@ -92,6 +97,11 @@ export default function ParentPage() {
   }, [children]);
 
   const videos = selectedStudent ? repository.listVideosForStudent(selectedStudent) : [];
+
+  const parentActivity = useMemo(() => {
+    void version;
+    return repository.listActivityEventsForParent(effectiveParentCrmId, 24);
+  }, [repository, effectiveParentCrmId, version]);
 
   const [newDisplay, setNewDisplay] = useState("");
   const [newScreen, setNewScreen] = useState("");
@@ -207,7 +217,7 @@ export default function ParentPage() {
               <section className="studio-hero">
                 <div>
                   <p className="card-title">Parent command center</p>
-                  <h1>Track progress and family access.</h1>
+                  <h1>{parentHeadline}</h1>
                   <p>
                     Preview student videos, monitor household setup, and manage family logins from the same Cadenza shell.
                   </p>
@@ -237,6 +247,16 @@ export default function ParentPage() {
                 <Metric label="Session" value={session?.kind === "parent" ? "Live" : "Demo"} sub="Parent mode" tone="green" />
                 <Metric label="Parent CRM" value={effectiveParentCrmId.split("-").pop() ?? effectiveParentCrmId} sub="Current profile" tone="gold" />
               </section>
+
+              <ActivityFeed
+                parentCrmId={effectiveParentCrmId}
+                compareHref={
+                  selectedStudent
+                    ? `/parent/compare?student=${encodeURIComponent(selectedStudent)}`
+                    : "/parent/compare"
+                }
+                events={parentActivity}
+              />
 
               {!ready || session?.kind !== "parent" ? (
                 <section className="card">

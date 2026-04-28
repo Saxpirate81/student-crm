@@ -5,6 +5,7 @@ import { useState } from "react";
 import { VideoCard } from "@/components/VideoCard";
 import { CadenzaMessageBoard } from "@/components/messaging/CadenzaMessageBoard";
 import { useRepository } from "@/lib/useRepository";
+import { useRotatingHeroHeadline } from "@/hooks/useRotatingHeroHeadline";
 
 const FALLBACK_VIDEO = "https://www.w3schools.com/html/mov_bbb.mp4";
 const FALLBACK_POSTER =
@@ -67,6 +68,7 @@ export default function AdminPage() {
   const students = repository.listStudents();
   const categories = repository.listCategories();
   const studentName = students.find((student) => student.crmId === studentCrmId)?.displayName ?? "Student";
+  const adminHeadline = useRotatingHeroHeadline("admin", "Admin");
   const activeVideos = repository.listVideosForStudent(studentCrmId);
 
   const pageTitle: Record<AdminPageId, string> = {
@@ -175,7 +177,7 @@ export default function AdminPage() {
               <section className="studio-hero instructor-hero">
                 <div>
                   <p className="card-title">Admin command center</p>
-                  <h1>Manage student media lifecycle.</h1>
+                  <h1>{adminHeadline}</h1>
                   <p>Upload, archive, restore, and delete student-attached videos in the shared Cadenza shell.</p>
                 </div>
                 <label className="profile-select">

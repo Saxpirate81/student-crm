@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
+import { useQuickRecorder } from "@/hooks/useQuickRecorder";
 import { ExerciseCard } from "@/components/music/ExerciseCard";
 import { ExerciseStaffComposer } from "@/components/music/ExerciseStaffComposer";
 import { CadenzaMessageBoard } from "@/components/messaging/CadenzaMessageBoard";
@@ -13,7 +14,9 @@ import {
   type ListeningState,
 } from "@/lib/listening/mock-listening-store";
 import { INSTRUMENT_OPTIONS } from "@/lib/music/notation";
+import { parseYouTubeVideoId, youTubeEmbedUrl, youTubeThumbUrl } from "@/lib/youtube";
 import { useRepository } from "@/lib/useRepository";
+import { useRotatingHeroHeadline } from "@/hooks/useRotatingHeroHeadline";
 
 const FALLBACK_VIDEO = "https://www.w3schools.com/html/mov_bbb.mp4";
 const FALLBACK_POSTER =
@@ -170,10 +173,18 @@ export default function InstructorPage() {
     { id: "m1-b4", pitch: "rest", beats: 1 },
   ]);
   const [exerciseMessage, setExerciseMessage] = useState<string | null>(null);
+  const [uploadDropActive, setUploadDropActive] = useState(false);
+  const [uploadHint, setUploadHint] = useState<string | null>(null);
+  const [sheetEmbedLessonId, setSheetEmbedLessonId] = useState("none");
+  const [sheetEmbedInput, setSheetEmbedInput] = useState("");
+  const [recTitle, setRecTitle] = useState("Quick tip recording");
+  const quickRec = useQuickRecorder();
 
   const roster = repository
     .listStudents()
     .filter((student) => student.primaryInstructorId === "instr-morgan");
+  const instructorHeroName = "Sarah Mitchell";
+  const instructorHeadline = useRotatingHeroHeadline("instructor", instructorHeroName);
   const selectedStudent = repository.getStudent(studentCrmId) ?? roster[0];
   const videos = repository.listVideosForStudent(studentCrmId, { includeArchived: showArchived });
   const activeVideos = repository.listVideosForStudent(studentCrmId);
@@ -338,7 +349,7 @@ export default function InstructorPage() {
               <section className="studio-hero instructor-hero">
                 <div>
                   <p className="card-title">Instructor command center</p>
-                  <h1>Sarah, shape the next practice session.</h1>
+                  <h1>{instructorHeadline}</h1>
                   <p>
                     Upload lesson media, write notation exercises, and manage each student library inside the same Cadenza experience.
                   </p>
@@ -396,39 +407,200 @@ export default function InstructorPage() {
           ) : null}
 
           {page === "uploads" ? (
-            <section className="card">
-              <div className="card-header">
-                <div>
-                  <div className="card-title">Mock upload</div>
-                  <div className="section-sub">This keeps using the current local repository until real storage is connected.</div>
+            <>
+              <section className="card">
+                <div className="card-header">
+                  <div>
+                    <div className="card-title">Drop zone + mock upload</div>
+                    <div className="section-sub">
+                      Drag files or a YouTube link, capture a quick screen tip, or use the form — all write to the local mock repository.
+                    </div>
+                  </div>
                 </div>
-              </div>
-              <div className="instructor-form-grid">
-                <label className="form-grp">
-                  <span className="form-lbl">Student</span>
-                  <select className="inp" value={studentCrmId} onChange={(event) => setStudentCrmId(event.target.value)}>
-                    {roster.map((student) => (
-                      <option key={student.crmId} value={student.crmId}>{student.displayName}</option>
-                    ))}
-                  </select>
-                </label>
-                <label className="form-grp">
-                  <span className="form-lbl">Category</span>
-                  <select className="inp" value={categoryId} onChange={(event) => setCategoryId(event.target.value)}>
-                    {categories.map((category) => (
-                      <option key={category.id} value={category.id}>{category.label}</option>
-                    ))}
-                  </select>
-                </label>
-                <label className="form-grp wide">
-                  <span className="form-lbl">Video title</span>
-                  <input className="inp" value={videoTitle} onChange={(event) => setVideoTitle(event.target.value)} placeholder="e.g. Lesson 12 tutorial take" />
-                </label>
-              </div>
-              <div className="modal-acts">
-                <button className="btn btn-primary" type="button" onClick={addMockUpload}>Add Mock Upload</button>
-              </div>
-            </section>
+                <div className="instructor-form-grid">
+                  <label className="form-grp">
+                    <span className="form-lbl">Student</span>
+                    <select className="inp" value={studentCrmId} onChange={(event) => setStudentCrmId(event.target.value)}>
+                      {roster.map((student) => (
+                        <option key={student.crmId} value={student.crmId}>{student.displayName}</option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="form-grp">
+                    <span className="form-lbl">Category</span>
+                    <select className="inp" value={categoryId} onChange={(event) => setCategoryId(event.target.value)}>
+                      {categories.map((category) => (
+                        <option key={category.id} value={category.id}>{category.label}</option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="form-grp wide">
+                    <span className="form-lbl">Video title</span>
+                    <input className="inp" value={videoTitle} onChange={(event) => setVideoTitle(event.target.value)} placeholder="e.g. Lesson 12 tutorial take" />
+                  </label>
+                </div>
+                <div
+                  className={`instructor-dropzone ${uploadDropActive ? "drag" : ""}`}
+                  onDragOver={(event) => {
+                    event.preventDefault();
+                    setUploadDropActive(true);
+                  }}
+                  onDragLeave={() => setUploadDropActive(false)}
+                  onDrop={(event) => {
+                    event.preventDefault();
+                    setUploadDropActive(false);
+                    const uri = event.dataTransfer.getData("text/uri-list") || event.dataTransfer.getData("text/plain");
+                    const yt = parseYouTubeVideoId(uri);
+                    if (yt) {
+                      repository.addVideo({
+                        studentCrmId,
+                        lessonId: null,
+                        categoryId,
+                        title: `YouTube clip`,
+                        playbackUrl: youTubeEmbedUrl(yt),
+                        thumbnailUrl: youTubeThumbUrl(yt),
+                        durationSec: 180,
+                        uploaderRole: "instructor",
+                      });
+                      refresh();
+                      setUploadHint("Added YouTube embed as a student video.");
+                      return;
+                    }
+                    const file = event.dataTransfer.files?.[0];
+                    if (file) {
+                      const objectUrl = URL.createObjectURL(file);
+                      const isPdf = file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf");
+                      repository.addVideo({
+                        studentCrmId,
+                        lessonId: null,
+                        categoryId,
+                        title: isPdf ? `PDF: ${file.name}` : `Drop: ${file.name}`,
+                        playbackUrl: isPdf ? FALLBACK_VIDEO : objectUrl,
+                        thumbnailUrl: FALLBACK_POSTER,
+                        durationSec: isPdf ? 12 : 45,
+                        uploaderRole: "instructor",
+                      });
+                      refresh();
+                      setUploadHint(
+                        isPdf
+                          ? "PDF cataloged with a placeholder preview in mock mode."
+                          : "File stored as a blob URL (same-browser only until cloud storage is wired).",
+                      );
+                    }
+                  }}
+                >
+                  <strong>Drop files or a YouTube URL here</strong>
+                  <span className="section-sub">Try dragging from your browser tab, or an audio / video / PDF file.</span>
+                </div>
+                {uploadHint ? <p className="section-sub mt-12">{uploadHint}</p> : null}
+                <div className="modal-acts">
+                  <button className="btn btn-primary" type="button" onClick={addMockUpload}>Add Mock Upload</button>
+                </div>
+              </section>
+
+              <section className="card">
+                <div className="card-header">
+                  <div>
+                    <div className="card-title">Quick screen capture</div>
+                    <div className="section-sub">Uses browser MediaRecorder + getDisplayMedia. WebM blob URL is dev-only storage.</div>
+                  </div>
+                </div>
+                {quickRec.error ? <p className="section-sub">{quickRec.error}</p> : null}
+                <div className="modal-acts">
+                  {quickRec.status === "idle" ? (
+                    <button className="btn btn-primary" type="button" onClick={() => void quickRec.start()}>
+                      Start capture
+                    </button>
+                  ) : null}
+                  {quickRec.status === "recording" ? (
+                    <button className="btn btn-primary" type="button" onClick={() => quickRec.stop()}>
+                      Stop recording
+                    </button>
+                  ) : null}
+                </div>
+                {quickRec.previewUrl ? (
+                  <div className="mt-12 space-y-3">
+                    <video className="w-full max-w-xl rounded-xl border border-slate-200/80 dark:border-white/10" controls src={quickRec.previewUrl} />
+                    <label className="form-grp wide">
+                      <span className="form-lbl">Title for library</span>
+                      <input className="inp" value={recTitle} onChange={(event) => setRecTitle(event.target.value)} />
+                    </label>
+                    <div className="modal-acts">
+                      <button
+                        className="btn btn-primary"
+                        type="button"
+                        onClick={() => {
+                          if (!quickRec.previewUrl || !recTitle.trim()) return;
+                          repository.addVideo({
+                            studentCrmId,
+                            lessonId: null,
+                            categoryId,
+                            title: recTitle.trim(),
+                            playbackUrl: quickRec.previewUrl,
+                            thumbnailUrl: FALLBACK_POSTER,
+                            durationSec: 60,
+                            uploaderRole: "instructor",
+                          });
+                          quickRec.reset();
+                          setRecTitle("Quick tip recording");
+                          refresh();
+                        }}
+                      >
+                        Save to student library
+                      </button>
+                      <button className="btn btn-sm" type="button" onClick={() => quickRec.reset()}>
+                        Discard
+                      </button>
+                    </div>
+                  </div>
+                ) : null}
+              </section>
+
+              <section className="card">
+                <div className="card-header">
+                  <div>
+                    <div className="card-title">Lesson sheet embed (Flat / Soundslice)</div>
+                    <div className="section-sub">Stores `externalScoreEmbedUrl` on the lesson for the student Sheet tab.</div>
+                  </div>
+                </div>
+                <div className="instructor-form-grid">
+                  <label className="form-grp wide">
+                    <span className="form-lbl">Lesson</span>
+                    <select className="inp" value={sheetEmbedLessonId} onChange={(event) => setSheetEmbedLessonId(event.target.value)}>
+                      <option value="none">Select lesson…</option>
+                      {lessons.map((lesson) => (
+                        <option key={lesson.id} value={lesson.id}>
+                          Lesson {lesson.lessonNumber}: {lesson.title}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="form-grp wide">
+                    <span className="form-lbl">Embed URL</span>
+                    <input
+                      className="inp"
+                      value={sheetEmbedInput}
+                      onChange={(event) => setSheetEmbedInput(event.target.value)}
+                      placeholder="https://flat.io/embed?..."
+                    />
+                  </label>
+                </div>
+                <div className="modal-acts">
+                  <button
+                    className="btn btn-primary"
+                    type="button"
+                    onClick={() => {
+                      if (sheetEmbedLessonId === "none" || !sheetEmbedInput.trim()) return;
+                      repository.updateLessonExternalScore(sheetEmbedLessonId, sheetEmbedInput.trim());
+                      setSheetEmbedInput("");
+                      refresh();
+                    }}
+                  >
+                    Save embed on lesson
+                  </button>
+                </div>
+              </section>
+            </>
           ) : null}
 
           {page === "exercises" ? (

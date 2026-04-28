@@ -1,10 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { usePathname, useRouter } from "next/navigation";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import type { ReactNode } from "react";
+import { StudentStudioProvider } from "@/app/student/(studio)/student-studio-context";
 import type { LessonSummary, MetronomeSound, ProgramType, StudentProfile, StudentVideo } from "@/lib/domain/types";
+import type { DailyPracticeSummary } from "@/lib/data/repository";
 import { MOCK_USER_KEYS } from "@/lib/data/repository";
+import { DEFAULT_DAILY_GOAL_MINUTES, monSunIndexForDate, weekMinutesMonToSun } from "@/lib/student-progress";
 import { useAuth } from "@/lib/auth/auth-context";
 import { useMetronome } from "@/hooks/useMetronome";
 import { useMicPracticeDetector } from "@/hooks/useMicPracticeDetector";
@@ -19,8 +23,28 @@ import {
 } from "@/lib/listening/mock-listening-store";
 import { useRepository } from "@/lib/useRepository";
 import { CadenzaMessageBoard } from "@/components/messaging/CadenzaMessageBoard";
+import { useRotatingHeroHeadline } from "@/hooks/useRotatingHeroHeadline";
+import { PracticeGoalRing } from "@/components/student/PracticeGoalRing";
 
-type StudioPage = "dashboard" | "assignments" | "practice" | "listening" | "achievements" | "progress";
+export type StudioPage = "dashboard" | "practice" | "listening" | "achievements" | "progress";
+
+/** Which main studio tab is active; `other` for /student/journey, lessons, etc. */
+export type StudentStudioNav = StudioPage | "other";
+
+function studentStudioNavFromPathname(path: string): StudentStudioNav {
+  const base = path.split("?")[0] ?? path;
+  const trimmed = base.replace(/\/+$/, "") || "/student";
+  if (trimmed === "/student") return "dashboard";
+  const seg = trimmed.replace(/^\/student\/?/, "").split("/").filter(Boolean)[0];
+  if (!seg) return "dashboard";
+  const tabs: StudioPage[] = ["practice", "listening", "achievements", "progress"];
+  if (tabs.includes(seg as StudioPage)) return seg as StudioPage;
+  return "other";
+}
+
+function studioHref(page: StudioPage): string {
+  return page === "dashboard" ? "/student" : `/student/${page}`;
+}
 
 type Assignment = {
   id: string;
@@ -35,7 +59,6 @@ type Assignment = {
 
 const navItems: Array<{ id: StudioPage; label: string; icon: keyof typeof icons }> = [
   { id: "dashboard", label: "Studio", icon: "grid" },
-  { id: "assignments", label: "Tasks", icon: "clip" },
   { id: "practice", label: "Practice", icon: "music" },
   { id: "listening", label: "Listen", icon: "headphones" },
   { id: "achievements", label: "Awards", icon: "trophy" },
@@ -208,12 +231,19 @@ function VideoTile({ video }: { video: StudentVideo }) {
   );
 }
 
-export default function StudentPage() {
+export function StudentStudioLayout({ children }: { children: ReactNode }) {
   const pathname = usePathname();
+  const router = useRouter();
+  const studioNav = studentStudioNavFromPathname(pathname);
+  const openStudioPage = useCallback(
+    (next: StudioPage) => {
+      router.push(studioHref(next));
+    },
+    [router],
+  );
   const { session, ready } = useAuth();
   const { repository, version } = useRepository();
   const [theme, setTheme] = useState<"dark" | "light">("dark");
-  const [page, setPage] = useState<StudioPage>("dashboard");
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [studentCrmId, setStudentCrmId] = useState("crm-alex");
   const [practiceSeconds, setPracticeSeconds] = useState(0);
@@ -275,21 +305,194 @@ export default function StudentPage() {
   const openAssignments = assignments.filter((assignment) => !assignment.done);
   const totalXp = 2450 + videos.length * 120 + exercises.length * 75 + assignments.filter((item) => item.done).length * 40;
   const level = Math.max(1, Math.floor(totalXp / 650));
-  const streak = 7 + Math.min(21, allLessons.length * 2 + videos.length);
-  const weekPractice = [0, 32, 28, 35, 0, 22, 40];
+  const dailyMap = student ? repository.getDailyPracticeMinutesMap(student.crmId) : {};
+  const weekPractice = weekMinutesMonToSun(dailyMap);
   const weekTotal = weekPractice.reduce((sum, value) => sum + value, 0);
+  const streak = student ? repository.getPracticeStreakDays(student.crmId) : 0;
+  const dailySummary: DailyPracticeSummary = student
+    ? repository.getDailyPracticeSummary(student.crmId)
+    : { dayLocal: "", minutes: 0, goalMinutes: DEFAULT_DAILY_GOAL_MINUTES };
+  const todayHeatIndex = monSunIndexForDate();
   const metronome = useMetronome(repository, MOCK_USER_KEYS.student);
   const micPractice = useMicPracticeDetector({
-    enabled: page === "practice",
+    enabled: studioNav === "practice",
     retryNonce: micRetryNonce,
     onSegmentComplete: (durationSec) => setPracticeSeconds((value) => value + durationSec),
   });
   const livePracticeSeconds = practiceSeconds + micPractice.activeSeconds;
-  const practiceRunning = page === "practice" && micPractice.activeSeconds > 0;
+  const practiceRunning = studioNav === "practice" && micPractice.activeSeconds > 0;
   const latestLesson = allLessons[0];
   const practiceRanking = student
     ? practiceRankingFor(student, repository.listStudents(), weekTotal)
     : null;
+
+  const profileName = student?.displayName ?? "Student";
+  const firstName = profileName.split(" ")[0];
+  const pageTitle: Record<StudioPage, string> = {
+    dashboard: "My Studio",
+    practice: "Practice",
+    listening: "Listening",
+    achievements: "Achievements",
+    progress: "Progress",
+  };
+  const topbarTitle = studioNav === "other" ? "Student" : pageTitle[studioNav];
+
+  const studioBundle = useMemo(
+    () => ({
+      openStudioPage,
+      dashboardProps: {
+        activeProgram,
+        assignments,
+        dailySummary,
+        exercises: exercises.length,
+        firstName,
+        level,
+        lessons,
+        openAssignments: openAssignments.length,
+        programs,
+        setActiveProgram,
+        setStudentCrmId,
+        practiceRanking,
+        selectableStudents,
+        sessionKind: session?.kind,
+        streak,
+        student,
+        studentCrmId,
+        todayHeatIndex,
+        toggleAssignment: (id: string) =>
+          setCompletedAssignments((current) => ({
+            ...current,
+            [id]: !assignments.find((a) => a.id === id)?.done,
+          })),
+        totalXp,
+        videos,
+        weekPractice,
+        weekTotal,
+        listeningTracks,
+        newsUpdates,
+        unreadNewsCount,
+        onOpenListening: () => openStudioPage("listening"),
+        onMarkNewsRead: () => {
+          if (!student) return;
+          markStudentNewsRead(student.crmId);
+          setListeningState(loadListeningState());
+          setListeningVersion((value) => value + 1);
+        },
+      },
+      practicePage: {
+        assignments,
+        toggleAssignment: (id: string) =>
+          setCompletedAssignments((current) => ({
+            ...current,
+            [id]: !assignments.find((a) => a.id === id)?.done,
+          })),
+        metronome,
+        practiceRunning,
+        latestLesson,
+        micStatus: micPractice.micStatus,
+        onRetryMic: () => setMicRetryNonce((value) => value + 1),
+        practiceSeconds: livePracticeSeconds,
+        videos,
+        weekPractice,
+      },
+      listeningPage: {
+        title: listeningTitle,
+        url: listeningUrl,
+        lessonId: listeningLessonId,
+        songTitle: listeningSongTitle,
+        setTitle: setListeningTitle,
+        setUrl: setListeningUrl,
+        setLessonId: setListeningLessonId,
+        setSongTitle: setListeningSongTitle,
+        tracks: listeningTracks,
+        newsUpdates,
+        lessons: allLessons,
+        onAddTrack: () => {
+          if (!student || !listeningTitle.trim() || !listeningUrl.trim()) return;
+          const attachedLesson =
+            allLessons.find((lesson) => lesson.id === (listeningLessonId === "latest" ? allLessons[0]?.id : listeningLessonId)) ??
+            null;
+          addListeningTrack({
+            studentCrmId: student.crmId,
+            title: listeningTitle.trim(),
+            url: listeningUrl.trim(),
+            lessonId: attachedLesson?.id ?? null,
+            lessonTitle: attachedLesson?.title ?? null,
+            songTitle: listeningSongTitle.trim() || null,
+            addedBy: "student",
+          });
+          setListeningTitle("");
+          setListeningUrl("");
+          setListeningSongTitle("");
+          setListeningState(loadListeningState());
+          setListeningVersion((value) => value + 1);
+        },
+        onLogListen: (trackId: string) => {
+          addListeningSeconds(trackId, 180);
+          setListeningState(loadListeningState());
+          setListeningVersion((value) => value + 1);
+        },
+        onMarkNewsRead: () => {
+          if (!student) return;
+          markStudentNewsRead(student.crmId);
+          setListeningState(loadListeningState());
+          setListeningVersion((value) => value + 1);
+        },
+      },
+      achievementsPage: {
+        profileName,
+        level,
+        streak,
+        totalXp,
+        videos: videos.length,
+        exercises: exercises.length,
+      },
+      progressPage: {
+        assignments,
+        exercises: exercises.length,
+        level,
+        streak,
+        videos: videos.length,
+      },
+    }),
+    [
+      activeProgram,
+      assignments,
+      dailySummary,
+      exercises,
+      firstName,
+      level,
+      lessons,
+      openAssignments,
+      listeningLessonId,
+      listeningSongTitle,
+      listeningTitle,
+      listeningTracks,
+      listeningUrl,
+      allLessons,
+      livePracticeSeconds,
+      metronome,
+      micPractice.micStatus,
+      newsUpdates,
+      openStudioPage,
+      practiceRanking,
+      practiceRunning,
+      profileName,
+      programs,
+      latestLesson,
+      selectableStudents,
+      session?.kind,
+      streak,
+      student,
+      studentCrmId,
+      todayHeatIndex,
+      totalXp,
+      unreadNewsCount,
+      videos,
+      weekPractice,
+      weekTotal,
+    ],
+  );
 
   if (ready && session?.kind === "parent" && !selectableStudents.length) {
     return (
@@ -305,18 +508,8 @@ export default function StudentPage() {
     );
   }
 
-  const profileName = student?.displayName ?? "Student";
-  const firstName = profileName.split(" ")[0];
-  const pageTitle: Record<StudioPage, string> = {
-    dashboard: "My Studio",
-    assignments: "Assignments",
-    practice: "Practice Log",
-    listening: "Listening",
-    achievements: "Achievements",
-    progress: "Progress",
-  };
-
   return (
+    <StudentStudioProvider value={studioBundle}>
     <div className="cadenza-app" data-theme={theme}>
       <div className={`sidebar-overlay ${drawerOpen ? "open" : ""}`} onClick={() => setDrawerOpen(false)} />
 
@@ -345,24 +538,21 @@ export default function StudentPage() {
         <nav className="nav">
           <div className="nav-lbl">Menu</div>
           {navItems.map((item) => (
-            <button
+            <Link
               key={item.id}
-              className={`nav-item ${page === item.id ? "active" : ""}`}
-              type="button"
-              onClick={() => {
-                setPage(item.id);
-                setDrawerOpen(false);
-              }}
+              href={studioHref(item.id)}
+              className={`nav-item ${studioNav === item.id ? "active" : ""}`}
+              onClick={() => setDrawerOpen(false)}
             >
               <StudioIcon icon={item.icon} className="nav-ico" />
               <span>{item.label}</span>
-              {item.id === "assignments" && openAssignments.length ? (
+              {item.id === "practice" && openAssignments.length ? (
                 <span className="nav-badge">{openAssignments.length}</span>
               ) : null}
               {item.id === "listening" && unreadNewsCount ? (
                 <span className="nav-badge">{unreadNewsCount}</span>
               ) : null}
-            </button>
+            </Link>
           ))}
         </nav>
         <div className="sidebar-user">
@@ -383,7 +573,7 @@ export default function StudentPage() {
             <span />
             <span />
           </button>
-          <div className="page-title">{pageTitle[page]}</div>
+          <div className="page-title">{topbarTitle}</div>
           <div className="topbar-right">
             <div className="xp-pill">+ {totalXp.toLocaleString()} XP</div>
             <button className="theme-toggle" onClick={() => setTheme(theme === "dark" ? "light" : "dark")} type="button">
@@ -391,171 +581,54 @@ export default function StudentPage() {
               <span className="toggle-track"><span className="toggle-knob" /></span>
               <span className="toggle-lbl">{theme === "dark" ? "Dark" : "Light"}</span>
             </button>
-            <button className="btn btn-primary" type="button" onClick={() => setPage("practice")}>
-              {page === "practice" ? "Listening" : "Start Practice"}
-            </button>
+            <Link
+              className="btn btn-primary"
+              href={studioNav === "practice" ? "/student/listening" : "/student/practice"}
+            >
+              {studioNav === "practice" ? "Listening" : "Start Practice"}
+            </Link>
           </div>
         </div>
 
         <CadenzaMessageBoard viewerRole="student" />
 
-        <div className="content">
-          {page === "dashboard" ? (
-            <Dashboard
-              activeProgram={activeProgram}
-              assignments={assignments}
-              exercises={exercises.length}
-              firstName={firstName}
-              level={level}
-              lessons={lessons}
-              metronome={metronome}
-              openAssignments={openAssignments.length}
-              practiceRunning={practiceRunning}
-              practiceSeconds={livePracticeSeconds}
-              programs={programs}
-              setActiveProgram={setActiveProgram}
-              setPage={setPage}
-              setStudentCrmId={setStudentCrmId}
-              practiceRanking={practiceRanking}
-              selectableStudents={selectableStudents}
-              sessionKind={session?.kind}
-              streak={streak}
-              student={student}
-              studentCrmId={studentCrmId}
-              toggleAssignment={(id) => setCompletedAssignments((current) => ({ ...current, [id]: !assignments.find((a) => a.id === id)?.done }))}
-              totalXp={totalXp}
-              videos={videos}
-              weekPractice={weekPractice}
-              weekTotal={weekTotal}
-              listeningTracks={listeningTracks}
-              newsUpdates={newsUpdates}
-              unreadNewsCount={unreadNewsCount}
-              onOpenListening={() => setPage("listening")}
-              onMarkNewsRead={() => {
-                if (!student) return;
-                markStudentNewsRead(student.crmId);
-                setListeningState(loadListeningState());
-                setListeningVersion((value) => value + 1);
-              }}
-            />
-          ) : null}
-          {page === "assignments" ? (
-            <AssignmentsPage
-              assignments={assignments}
-              toggleAssignment={(id) => setCompletedAssignments((current) => ({ ...current, [id]: !assignments.find((a) => a.id === id)?.done }))}
-            />
-          ) : null}
-          {page === "practice" ? (
-            <PracticePage
-              assignments={assignments}
-              practiceRunning={practiceRunning}
-              latestLesson={latestLesson}
-              micStatus={micPractice.micStatus}
-              onRetryMic={() => setMicRetryNonce((value) => value + 1)}
-              practiceSeconds={livePracticeSeconds}
-              videos={videos}
-              weekPractice={weekPractice}
-            />
-          ) : null}
-          {page === "listening" ? (
-            <ListeningPage
-              title={listeningTitle}
-              url={listeningUrl}
-              lessonId={listeningLessonId}
-              songTitle={listeningSongTitle}
-              setTitle={setListeningTitle}
-              setUrl={setListeningUrl}
-              setLessonId={setListeningLessonId}
-              setSongTitle={setListeningSongTitle}
-              tracks={listeningTracks}
-              newsUpdates={newsUpdates}
-              lessons={allLessons}
-              onAddTrack={() => {
-                if (!student || !listeningTitle.trim() || !listeningUrl.trim()) return;
-                const attachedLesson =
-                  allLessons.find((lesson) => lesson.id === (listeningLessonId === "latest" ? allLessons[0]?.id : listeningLessonId)) ??
-                  null;
-                addListeningTrack({
-                  studentCrmId: student.crmId,
-                  title: listeningTitle.trim(),
-                  url: listeningUrl.trim(),
-                  lessonId: attachedLesson?.id ?? null,
-                  lessonTitle: attachedLesson?.title ?? null,
-                  songTitle: listeningSongTitle.trim() || null,
-                  addedBy: "student",
-                });
-                setListeningTitle("");
-                setListeningUrl("");
-                setListeningSongTitle("");
-                setListeningState(loadListeningState());
-                setListeningVersion((value) => value + 1);
-              }}
-              onLogListen={(trackId) => {
-                addListeningSeconds(trackId, 180);
-                setListeningState(loadListeningState());
-                setListeningVersion((value) => value + 1);
-              }}
-              onMarkNewsRead={() => {
-                if (!student) return;
-                markStudentNewsRead(student.crmId);
-                setListeningState(loadListeningState());
-                setListeningVersion((value) => value + 1);
-              }}
-            />
-          ) : null}
-          {page === "achievements" ? (
-            <AchievementsPage
-              profileName={profileName}
-              level={level}
-              streak={streak}
-              totalXp={totalXp}
-              videos={videos.length}
-              exercises={exercises.length}
-            />
-          ) : null}
-          {page === "progress" ? (
-            <ProgressPage assignments={assignments} exercises={exercises.length} level={level} streak={streak} videos={videos.length} />
-          ) : null}
-        </div>
+        <div className="content">{children}</div>
       </main>
 
       <nav className="mobile-nav">
         {navItems.map((item) => (
-          <button
+          <Link
             key={item.id}
-            className={`mob-nav-item ${page === item.id ? "active" : ""}`}
-            onClick={() => setPage(item.id)}
-            type="button"
+            href={studioHref(item.id)}
+            className={`mob-nav-item ${studioNav === item.id ? "active" : ""}`}
           >
             <StudioIcon icon={item.icon} />
             <span className="mob-nav-lbl">{item.label}</span>
-            {item.id === "assignments" && openAssignments.length ? <span className="mob-nav-dot" /> : null}
+            {item.id === "practice" && openAssignments.length ? <span className="mob-nav-dot" /> : null}
             {item.id === "listening" && unreadNewsCount ? <span className="mob-nav-dot" /> : null}
-          </button>
+          </Link>
         ))}
       </nav>
 
-      <button className="fab" type="button" onClick={() => setPage("practice")}>
+      <Link className="fab" href="/student/practice" aria-label="Open practice">
         ♪
-      </button>
+      </Link>
     </div>
+    </StudentStudioProvider>
   );
 }
 
-function Dashboard(props: {
+export function StudentStudioDashboard(props: {
   activeProgram: ProgramType;
   assignments: Assignment[];
+  dailySummary: DailyPracticeSummary;
   exercises: number;
   firstName: string;
   level: number;
   lessons: LessonSummary[];
-  metronome: ReturnType<typeof useMetronome>;
   openAssignments: number;
-  practiceRunning: boolean;
-  practiceSeconds: number;
   programs: ProgramType[];
   setActiveProgram: (program: ProgramType) => void;
-  setPage: (page: StudioPage) => void;
   setStudentCrmId: (id: string) => void;
   practiceRanking: ReturnType<typeof practiceRankingFor> | null;
   selectableStudents: StudentProfile[];
@@ -563,6 +636,7 @@ function Dashboard(props: {
   streak: number;
   student?: StudentProfile;
   studentCrmId: string;
+  todayHeatIndex: number;
   toggleAssignment: (id: string) => void;
   totalXp: number;
   videos: StudentVideo[];
@@ -577,17 +651,14 @@ function Dashboard(props: {
   const {
     activeProgram,
     assignments,
+    dailySummary,
     exercises,
     firstName,
     level,
     lessons,
-    metronome,
     openAssignments,
-    practiceRunning,
-    practiceSeconds,
     programs,
     setActiveProgram,
-    setPage,
     setStudentCrmId,
     practiceRanking,
     selectableStudents,
@@ -595,6 +666,7 @@ function Dashboard(props: {
     streak,
     student,
     studentCrmId,
+    todayHeatIndex,
     toggleAssignment,
     totalXp,
     videos,
@@ -607,12 +679,14 @@ function Dashboard(props: {
     onMarkNewsRead,
   } = props;
 
+  const greetingHeadline = useRotatingHeroHeadline("student", firstName);
+
   return (
     <>
       <section className="studio-hero">
         <div>
           <p className="card-title">Your practice space</p>
-          <h1>{firstName}, keep the streak alive.</h1>
+          <h1>{greetingHeadline}</h1>
           <p>
             Lessons, tutorials, practice tools, and progress from the current app now live inside the Cadenza studio shell.
           </p>
@@ -633,22 +707,36 @@ function Dashboard(props: {
         )}
       </section>
 
+      <section className="practice-hero-card">
+        <PracticeGoalRing minutes={dailySummary.minutes} goalMinutes={dailySummary.goalMinutes} />
+        <div className="practice-hero-copy">
+          <div className="card-title">Today&apos;s practice</div>
+          <p className="section-sub">
+            Your daily ring fills from lesson and video practice time (mic-detected segments). Streak counts calendar days
+            where you hit at least {dailySummary.goalMinutes} minutes.
+          </p>
+          <p className="section-sub">
+            Current streak: <strong>{streak} days</strong> · This week: <strong>{weekTotal} min</strong>
+          </p>
+          <div className="practice-hero-actions">
+            <Link className="btn btn-sm" href="/student/journey">
+              Journey
+            </Link>
+            <Link className="btn btn-sm" href="/student/compare">
+              Compare videos
+            </Link>
+            <Link className="btn btn-sm" href="/student/showcase">
+              Showcase
+            </Link>
+          </div>
+        </div>
+      </section>
+
       <section className="grid4">
         <Metric label="Streak" value={`${streak}`} sub="days" tone="gold" />
         <Metric label="XP" value={totalXp.toLocaleString()} sub={`Level ${level}`} tone="purple" />
         <Metric label="Tasks" value={`${openAssignments}`} sub="Open" tone={openAssignments ? "red" : "green"} />
         <Metric label="Week" value={`${weekTotal}m`} sub="Goal: 210" tone="cyan" />
-      </section>
-
-      <section className="grid2">
-        <MetronomePanel metronome={metronome} />
-        <PracticeCounter
-          running={practiceRunning}
-          seconds={practiceSeconds}
-          statusLabel={practiceRunning ? "Sound detected" : "Open Practice to listen"}
-          onToggle={() => setPage("practice")}
-          buttonLabel="Practice"
-        />
       </section>
 
       {practiceRanking ? (
@@ -742,27 +830,32 @@ function Dashboard(props: {
         </div>
       </section>
 
-      <section className="grid2">
-        <div className="card">
-          <div className="card-header">
-            <div className="card-title">My assignments</div>
-            <button className="btn btn-sm" type="button" onClick={() => setPage("assignments")}>
-              All
-            </button>
-          </div>
-          {assignments.slice(0, 3).map((assignment) => (
-            <AssignmentRow key={assignment.id} assignment={assignment} onToggle={() => toggleAssignment(assignment.id)} />
-          ))}
-        </div>
-        <div className="card">
-          <div className="card-header">
+      <section className="card">
+        <div className="card-header">
+          <div>
             <div className="card-title">This week</div>
-            <span className="badge b-cyan">{weekTotal} min</span>
+            <div className="section-sub">Minutes logged on the practice calendar (Mon–Sun).</div>
           </div>
-          <HeatGrid weekPractice={weekPractice} />
-          <div className="pbar mt-12"><div className="xpbar-fill" style={{ width: `${Math.round((weekTotal / 210) * 100)}%` }} /></div>
-          <div className="section-sub mt-6">{weekTotal} / 210 min this week</div>
+          <span className="badge b-cyan">{weekTotal} min</span>
         </div>
+        <HeatGrid todayIndex={todayHeatIndex} weekPractice={weekPractice} />
+        <div className="pbar mt-12"><div className="xpbar-fill" style={{ width: `${Math.round((weekTotal / 210) * 100)}%` }} /></div>
+        <div className="section-sub mt-6">{weekTotal} / 210 min toward weekly goal</div>
+      </section>
+
+      <section className="card">
+        <div className="card-header">
+          <div>
+            <div className="card-title">My assignments</div>
+            <div className="section-sub">Tasks from your instructor — keep them, but today&apos;s ring is the headline.</div>
+          </div>
+          <Link className="btn btn-sm" href="/student/practice">
+            Open in Practice
+          </Link>
+        </div>
+        {assignments.slice(0, 4).map((assignment) => (
+          <AssignmentRow key={assignment.id} assignment={assignment} onToggle={() => toggleAssignment(assignment.id)} />
+        ))}
       </section>
 
       <section className="card">
@@ -886,7 +979,13 @@ function AssignmentRow({ assignment, onToggle }: { assignment: Assignment; onTog
   );
 }
 
-function AssignmentsPage({ assignments, toggleAssignment }: { assignments: Assignment[]; toggleAssignment: (id: string) => void }) {
+export function StudentStudioAssignmentsPage({
+  assignments,
+  toggleAssignment,
+}: {
+  assignments: Assignment[];
+  toggleAssignment: (id: string) => void;
+}) {
   const done = assignments.filter((assignment) => assignment.done).length;
   return (
     <section className="card">
@@ -905,9 +1004,11 @@ function AssignmentsPage({ assignments, toggleAssignment }: { assignments: Assig
   );
 }
 
-function PracticePage(props: {
+export function StudentStudioPracticePage(props: {
   assignments: Assignment[];
+  toggleAssignment: (id: string) => void;
   latestLesson?: LessonSummary;
+  metronome: ReturnType<typeof useMetronome>;
   micStatus: ReturnType<typeof useMicPracticeDetector>["micStatus"];
   onRetryMic: () => void;
   practiceRunning: boolean;
@@ -943,7 +1044,9 @@ function PracticePage(props: {
         <h2>{props.latestLesson?.title ?? "Practice focus will appear here"}</h2>
         <p>{props.latestLesson?.notes ?? "When your instructor adds the next lesson, its notes will become the practice plan for this tab."}</p>
       </section>
+      <StudentStudioAssignmentsPage assignments={props.assignments} toggleAssignment={props.toggleAssignment} />
       <section className="grid2">
+        <MetronomePanel metronome={props.metronome} />
         <PracticeCounter
           running={props.practiceRunning}
           seconds={props.practiceSeconds}
@@ -951,21 +1054,15 @@ function PracticePage(props: {
           onToggle={props.micStatus === "denied" ? props.onRetryMic : () => {}}
           buttonLabel={props.micStatus === "denied" ? "Retry mic" : "Auto"}
         />
-        <div className="card">
-          <div className="card-title">Weekly</div>
-          {props.weekPractice.map((minutes, index) => (
-            <div className="practice-row" key={`${index}-${minutes}`}>
-              <span>{["M", "T", "W", "T", "F", "S", "S"][index]}</span>
-              <div className="pbar"><div className="pbar-fill" style={{ width: `${Math.min(100, minutes * 2)}%` }} /></div>
-              <small>{minutes || "-"}</small>
-            </div>
-          ))}
-        </div>
       </section>
       <section className="card">
-        <div className="card-header"><div className="card-title">Practice queue</div></div>
-        {props.assignments.filter((assignment) => assignment.type === "Practice").map((assignment) => (
-          <AssignmentRow key={assignment.id} assignment={assignment} onToggle={() => {}} />
+        <div className="card-title">Weekly</div>
+        {props.weekPractice.map((minutes, index) => (
+          <div className="practice-row" key={`${index}-${minutes}`}>
+            <span>{["M", "T", "W", "T", "F", "S", "S"][index]}</span>
+            <div className="pbar"><div className="pbar-fill" style={{ width: `${Math.min(100, minutes * 2)}%` }} /></div>
+            <small>{minutes || "-"}</small>
+          </div>
         ))}
       </section>
       <section className="card">
@@ -976,7 +1073,7 @@ function PracticePage(props: {
   );
 }
 
-function ListeningPage(props: {
+export function StudentStudioListeningPage(props: {
   title: string;
   url: string;
   lessonId: string;
@@ -1125,7 +1222,14 @@ function ListeningCover({
   );
 }
 
-function AchievementsPage(props: { profileName: string; level: number; streak: number; totalXp: number; videos: number; exercises: number }) {
+export function StudentStudioAchievementsPage(props: {
+  profileName: string;
+  level: number;
+  streak: number;
+  totalXp: number;
+  videos: number;
+  exercises: number;
+}) {
   const achievements = [
     { name: "7-Day Warrior", desc: "Practice streak started", unlocked: props.streak >= 7 },
     { name: "Video Explorer", desc: "Opened the lesson library", unlocked: props.videos > 0 },
@@ -1162,7 +1266,19 @@ function AchievementsPage(props: { profileName: string; level: number; streak: n
   );
 }
 
-function ProgressPage({ assignments, exercises, level, streak, videos }: { assignments: Assignment[]; exercises: number; level: number; streak: number; videos: number }) {
+export function StudentStudioProgressPage({
+  assignments,
+  exercises,
+  level,
+  streak,
+  videos,
+}: {
+  assignments: Assignment[];
+  exercises: number;
+  level: number;
+  streak: number;
+  videos: number;
+}) {
   const skillRows = [
     ["Practice", Math.min(96, 45 + assignments.filter((item) => item.done).length * 10)],
     ["Lessons", Math.min(96, 50 + videos * 8)],
@@ -1188,7 +1304,7 @@ function ProgressPage({ assignments, exercises, level, streak, videos }: { assig
   );
 }
 
-function HeatGrid({ weekPractice }: { weekPractice: number[] }) {
+function HeatGrid({ weekPractice, todayIndex }: { weekPractice: number[]; todayIndex: number }) {
   return (
     <div className="heat-grid">
       {["M", "T", "W", "T", "F", "S", "S"].map((day, index) => {
@@ -1197,7 +1313,7 @@ function HeatGrid({ weekPractice }: { weekPractice: number[] }) {
         return (
           <div className="heat-day" key={`${day}-${index}`}>
             <div className="heat-lbl">{day}</div>
-            <div className={`heat-box heat-${level} ${index === 2 ? "heat-today" : ""}`}>{minutes || ""}</div>
+            <div className={`heat-box heat-${level} ${index === todayIndex ? "heat-today" : ""}`}>{minutes || ""}</div>
           </div>
         );
       })}

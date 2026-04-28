@@ -12,6 +12,7 @@ import {
 import { usePathname } from "next/navigation";
 import { PracticeMilestoneFlash } from "@/components/PracticeMilestoneFlash";
 import { useMicPracticeDetector } from "@/hooks/useMicPracticeDetector";
+import { getRepository } from "@/lib/data";
 import { MOCK_USER_KEYS } from "@/lib/data/repository";
 import {
   addPracticeSeconds,
@@ -70,6 +71,19 @@ export function StudentPracticeProvider({ children }: { children: React.ReactNod
 
   const onSegmentComplete = useCallback(
     (durationSec: number) => {
+      const repo = getRepository();
+      const lessonMatch = pathname.match(/^\/student\/lessons\/([^/]+)/);
+      const videoMatch = pathname.match(/^\/student\/videos\/([^/]+)/);
+      let crmId: string | null = null;
+      if (lessonMatch) {
+        crmId = repo.getLesson(lessonMatch[1])?.studentCrmId ?? null;
+      } else if (videoMatch) {
+        crmId = repo.getVideo(videoMatch[1])?.studentCrmId ?? null;
+      }
+      if (crmId && durationSec > 0) {
+        repo.recordDailyPracticeMinutes(crmId, durationSec / 60);
+      }
+
       const prevTotal = getPracticeTotalSeconds(userKey);
       const nextTotal = addPracticeSeconds(userKey, durationSec);
       setTotalPracticeSeconds(nextTotal);
@@ -92,7 +106,7 @@ export function StudentPracticeProvider({ children }: { children: React.ReactNod
         return next.slice(0, 12);
       });
     },
-    [userKey],
+    [userKey, pathname],
   );
 
   const { micStatus, activeSeconds } = useMicPracticeDetector({

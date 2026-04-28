@@ -1,12 +1,17 @@
 import type {
+  ActivityEvent,
+  ActivityEventKind,
   AppRole,
   ExerciseNote,
   LessonSummary,
+  MediaComment,
   MusicInstrument,
   MetronomeSound,
   MediaCategory,
   NotationExercise,
   ProgramType,
+  ShowcasePost,
+  StudentMilestone,
   StudentProfile,
   StudentVideo,
   UploaderRole,
@@ -42,6 +47,40 @@ export type AddExerciseInput = {
   tempoBpm: number;
   notes: ExerciseNote[];
   createdByInstructorId: string;
+};
+
+export type DailyPracticeSummary = {
+  dayLocal: string;
+  minutes: number;
+  goalMinutes: number;
+};
+
+export type AddMilestoneInput = {
+  studentCrmId: string;
+  conceptKey: string;
+  label: string;
+  source: StudentMilestone["source"];
+};
+
+export type AppendActivityInput = {
+  studentCrmId: string;
+  kind: ActivityEventKind;
+  title: string;
+  detail?: string;
+};
+
+export type AddMediaCommentInput = {
+  videoId: string;
+  authorRole: MediaComment["authorRole"];
+  authorLabel: string;
+  body: string;
+  tSec: number;
+};
+
+export type PublishShowcaseInput = {
+  studentCrmId: string;
+  videoId: string;
+  caption: string;
 };
 
 export const DEFAULT_SETTINGS: VideoPlaybackSettings = {
@@ -102,6 +141,28 @@ export type AppRepository = {
   appendMockStudent(student: StudentProfile): void;
   listExercisesForStudent(crmId: string, opts?: ListExercisesOptions): NotationExercise[];
   addExercise(input: AddExerciseInput): NotationExercise;
+
+  getDailyPracticeSummary(crmId: string, dayLocal?: string): DailyPracticeSummary;
+  recordDailyPracticeMinutes(crmId: string, minutes: number, dayLocal?: string): DailyPracticeSummary;
+  getPracticeStreakDays(crmId: string, goalMinutes?: number): number;
+  /** Per local calendar day (`YYYY-MM-DD`) total practice minutes (mock aggregate). */
+  getDailyPracticeMinutesMap(crmId: string): Record<string, number>;
+  listMilestones(crmId: string): StudentMilestone[];
+  addMilestone(input: AddMilestoneInput): StudentMilestone;
+
+  listActivityEvents(crmId: string, limit?: number): ActivityEvent[];
+  listActivityEventsForParent(parentCrmId: string, limit?: number): ActivityEvent[];
+  appendActivityEvent(input: AppendActivityInput): ActivityEvent;
+
+  listMediaComments(videoId: string): MediaComment[];
+  addMediaComment(input: AddMediaCommentInput): MediaComment;
+
+  listShowcasePosts(): ShowcasePost[];
+  publishShowcasePost(input: PublishShowcaseInput): ShowcasePost;
+  addShowcaseEmojiReaction(postId: string, emoji: string): void;
+  addShowcaseTextComment(postId: string, authorLabel: string, body: string): void;
+
+  updateLessonExternalScore(lessonId: string, embedUrl: string | null): void;
 };
 
 export const MOCK_USER_KEYS: Record<AppRole, string> = {

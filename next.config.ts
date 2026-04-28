@@ -3,8 +3,8 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   /**
-   * Lockfile in your home folder can make Next.js pick the wrong app root.
-   * Pin tracing to this project folder (the `web` directory).
+   * Pin the app root to this folder (`web/`). If a lockfile exists higher in the tree
+   * (e.g. home directory), Next otherwise mis-detects the workspace and tracing breaks.
    */
   outputFileTracingRoot: path.join(__dirname),
   /** Polling avoids “too many open files” (EMFILE) on some Macs when using `next dev`. */

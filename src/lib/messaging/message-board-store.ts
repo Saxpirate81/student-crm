@@ -81,12 +81,35 @@ export function loadReadIds(): string[] {
 
 export function saveReadIds(ids: string[]) {
   if (typeof window === "undefined") return;
-  window.localStorage.setItem(READ_KEY, JSON.stringify(ids));
-  window.dispatchEvent(new Event(MESSAGE_BOARD_EVENT));
+  try {
+    window.localStorage.setItem(READ_KEY, JSON.stringify(ids));
+    window.dispatchEvent(new Event(MESSAGE_BOARD_EVENT));
+  } catch (e) {
+    console.error("Cadenza message board: could not save read state (private mode or storage blocked).", e);
+    throw e;
+  }
 }
 
 export function markAllRead(ids: string[]) {
+  if (!ids.length) return;
   const current = new Set(loadReadIds());
   ids.forEach((id) => current.add(id));
   saveReadIds([...current]);
+}
+
+/** Mark a single message read (same storage as bulk). */
+export function markMessageRead(id: string) {
+  markAllRead([id]);
+}
+
+/** Clear which messages are read (this browser only). Student/parent UI uses this so “Mark read” can appear again after testing. */
+export function clearMessageBoardReadIds() {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.removeItem(READ_KEY);
+    window.dispatchEvent(new Event(MESSAGE_BOARD_EVENT));
+  } catch (e) {
+    console.error("Cadenza message board: could not clear read state.", e);
+    throw e;
+  }
 }

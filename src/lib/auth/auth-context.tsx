@@ -21,6 +21,7 @@ import {
   type SignUpChildInput,
   type SignUpParentInput,
 } from "@/lib/auth/mock-auth-store";
+import { advanceHeroGreetingRotation } from "@/lib/greetings/rotating-hero-greeting";
 
 const SESSION_KEY = "real-school-mock-session-v1";
 
@@ -72,6 +73,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const loginAsParent = useCallback((email: string, password: string) => {
     const next = authenticateParent(email, password);
     if (!next) return false;
+    advanceHeroGreetingRotation("parent");
     setSession(next);
     writeSession(next);
     return true;
@@ -80,6 +82,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const loginAsChild = useCallback((parentEmail: string, screenName: string, password: string) => {
     const next = authenticateChild(parentEmail, screenName, password);
     if (!next) return false;
+    advanceHeroGreetingRotation("student");
     setSession(next);
     writeSession(next);
     return true;
@@ -88,6 +91,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const loginAsProducer = useCallback((email: string, password: string) => {
     const next = authenticateProducer(email, password);
     if (!next) return false;
+    advanceHeroGreetingRotation("producer");
     setSession(next);
     writeSession(next);
     return true;
@@ -96,6 +100,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const signUp = useCallback((input: SignUpParentInput, firstChild?: SignUpChildInput | null) => {
     const result = signUpParentAndOptionalChild(input, firstChild);
     if (!result.ok) return result;
+    advanceHeroGreetingRotation("parent");
     setSession(result.session);
     writeSession(result.session);
     return { ok: true as const };

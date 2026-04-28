@@ -8,6 +8,7 @@ import { ProducerQueueView } from "@/components/producer/ProducerQueueView";
 import { CadenzaMessageBoard } from "@/components/messaging/CadenzaMessageBoard";
 import { useProducerWorkspace } from "@/hooks/useProducerWorkspace";
 import { useAuth } from "@/lib/auth/auth-context";
+import { useRotatingHeroHeadline } from "@/hooks/useRotatingHeroHeadline";
 
 type ProducerPageId = "queue" | "playbook" | "matrix";
 
@@ -62,6 +63,9 @@ export default function ProducerPage() {
   const [page, setPage] = useState<ProducerPageId>("queue");
   const [drawerOpen, setDrawerOpen] = useState(false);
   const { playbookVersion, setPlaybookVersion, rules, setRules, tasks, setTasks, playbookVersions } = useProducerWorkspace();
+
+  const producerHeroName = session?.kind === "producer" ? session.displayName : "Producer";
+  const producerHeadline = useRotatingHeroHeadline("producer", producerHeroName);
 
   const pageTitle: Record<ProducerPageId, string> = {
     queue: "View Queue",
@@ -147,7 +151,7 @@ export default function ProducerPage() {
           <section className="studio-hero instructor-hero">
             <div>
               <p className="card-title">Producer workspace scaffold</p>
-              <h1>Queue, playbook, and matrix foundation is in place.</h1>
+              <h1>{producerHeadline}</h1>
               <p>
                 This is the first migration step from the Google Script webapp. Next we wire live data and actions.
               </p>

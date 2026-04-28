@@ -44,6 +44,60 @@ export type LessonSummary = {
   instrument: string;
   /** Optional longer notes shown on the lesson page (plan, focus, homework). */
   notes?: string;
+  /** Optional embed URL (Soundslice, Flat.io, or similar) for interactive sheet music. */
+  externalScoreEmbedUrl?: string | null;
+};
+
+export type StudentMilestone = {
+  id: string;
+  studentCrmId: string;
+  conceptKey: string;
+  label: string;
+  achievedAt: string;
+  source: "instructor" | "system";
+};
+
+export type ActivityEventKind =
+  | "practice_session"
+  | "video_upload"
+  | "milestone"
+  | "instructor_comment"
+  | "assignment_done"
+  | "showcase_post";
+
+export type ActivityEvent = {
+  id: string;
+  studentCrmId: string;
+  kind: ActivityEventKind;
+  title: string;
+  detail?: string;
+  createdAt: string;
+};
+
+export type MediaComment = {
+  id: string;
+  videoId: string;
+  authorRole: UploaderRole | "parent";
+  authorLabel: string;
+  body: string;
+  tSec: number;
+  createdAt: string;
+};
+
+export type ShowcaseReaction = {
+  emoji: string;
+  count: number;
+  self?: boolean;
+};
+
+export type ShowcasePost = {
+  id: string;
+  studentCrmId: string;
+  videoId: string;
+  caption: string;
+  publishedAt: string;
+  reactions: ShowcaseReaction[];
+  textComments: { id: string; authorLabel: string; body: string; createdAt: string }[];
 };
 
 export type StudentVideo = {

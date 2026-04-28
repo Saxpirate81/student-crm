@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useParams, usePathname, useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ExerciseCard } from "@/components/music/ExerciseCard";
 import { NetflixScrollRow } from "@/components/student/NetflixScrollRow";
 import { RailVideoPoster } from "@/components/student/RailVideoPoster";
@@ -36,8 +36,13 @@ export function LessonStreamingView() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const vParam = searchParams.get("v");
+  const [lessonTab, setLessonTab] = useState<"video" | "sheet">("video");
 
   const lessonId = params.lessonId ?? "";
+
+  useEffect(() => {
+    setLessonTab("video");
+  }, [lessonId]);
 
   const lesson = useMemo(() => {
     void version;
@@ -164,7 +169,46 @@ export function LessonStreamingView() {
           </div>
         </header>
 
-        {selectedVideo ? (
+        {lesson.externalScoreEmbedUrl ? (
+          <div className="mb-5 flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => setLessonTab("video")}
+              className={`rounded-full border px-4 py-2 text-xs font-semibold transition md:text-sm ${
+                lessonTab === "video"
+                  ? "border-violet-500/50 bg-violet-500/15 text-violet-900 dark:text-white"
+                  : "border-slate-300/90 bg-white/70 text-slate-600 hover:border-slate-400 dark:border-white/10 dark:bg-white/[0.04] dark:text-zinc-300"
+              }`}
+            >
+              Video
+            </button>
+            <button
+              type="button"
+              onClick={() => setLessonTab("sheet")}
+              className={`rounded-full border px-4 py-2 text-xs font-semibold transition md:text-sm ${
+                lessonTab === "sheet"
+                  ? "border-violet-500/50 bg-violet-500/15 text-violet-900 dark:text-white"
+                  : "border-slate-300/90 bg-white/70 text-slate-600 hover:border-slate-400 dark:border-white/10 dark:bg-white/[0.04] dark:text-zinc-300"
+              }`}
+            >
+              Sheet music
+            </button>
+            <span className="self-center text-[11px] text-slate-500 dark:text-zinc-500">
+              Flat.io / Soundslice embed (mock URL on some lessons).
+            </span>
+          </div>
+        ) : null}
+
+        {lessonTab === "sheet" && lesson.externalScoreEmbedUrl ? (
+          <div className="pb-6">
+            <iframe
+              title="Interactive sheet music"
+              src={lesson.externalScoreEmbedUrl}
+              className="h-[min(78vh,760px)] w-full max-w-5xl rounded-3xl border border-slate-300/90 bg-white shadow-lg dark:border-white/10 dark:bg-zinc-950"
+              allow="fullscreen; autoplay"
+            />
+          </div>
+        ) : selectedVideo ? (
           <div className="pb-4 md:pb-6">
             <StudentVideoTheater video={selectedVideo} hideMetronomePanel />
           </div>

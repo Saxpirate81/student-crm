@@ -1,14 +1,17 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import type { AnimationEvent } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useState } from "react";
 import { CadenzaRichTextEditor } from "@/components/messaging/CadenzaRichTextEditor";
 import {
   MESSAGE_BOARD_EVENT,
+  clearMessageBoardReadIds,
   formatMessageTimestampUtc,
   loadMessages,
   loadReadIds,
   markAllRead,
+  markMessageRead,
   saveMessages,
   type MessageAudience,
   type MessageImageLayout,
@@ -30,11 +33,15 @@ function messageVisible(message: StudioMessage, role: ViewerRole) {
   return audienceForRole(role).includes(message.audience);
 }
 
+type BoardPhase = "open" | "flash" | "collapsed";
+
 export function CadenzaMessageBoard({ viewerRole }: Props) {
   const isAdmin = viewerRole === "admin";
+  const isFamilyViewer = viewerRole === "student" || viewerRole === "parent";
   const [messages, setMessages] = useState<StudioMessage[]>([]);
   const [readIds, setReadIds] = useState<string[]>([]);
   const [composerOpen, setComposerOpen] = useState(false);
+  const [boardPhase, setBoardPhase] = useState<BoardPhase>("open");
 
   const refresh = useCallback(() => {
     setMessages(loadMessages());
@@ -67,17 +74,138 @@ export function CadenzaMessageBoard({ viewerRole }: Props) {
     return visibleMessages.filter((message) => !read.has(message.id)).map((message) => message.id);
   }, [readIds, visibleMessages]);
 
+  useEffect(() => {
+    if (boardPhase === "collapsed" && unreadIds.length > 0) {
+      setBoardPhase("open");
+    }
+  }, [boardPhase, unreadIds.length]);
+
   const preview = useMemo(() => {
     return [...visibleMessages]
       .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
       .slice(0, 3);
   }, [visibleMessages]);
 
+  useLayoutEffect(() => {
+    if (!isFamilyViewer) return;
+    if (boardPhase !== "open") return;
+    if (preview.length === 0) return;
+    if (unreadIds.length > 0) return;
+    setBoardPhase("collapsed");
+  }, [isFamilyViewer, boardPhase, preview.length, unreadIds.length]);
+
   const markVisibleRead = () => {
     if (!unreadIds.length) return;
-    markAllRead(unreadIds);
-    refresh();
+    try {
+      markAllRead(unreadIds);
+      refresh();
+    } catch {
+      return;
+    }
+    if (isFamilyViewer) {
+      setBoardPhase("collapsed");
+      return;
+    }
+    setBoardPhase("flash");
   };
+
+  const markOneRead = (id: string) => {
+    try {
+      markMessageRead(id);
+      refresh();
+    } catch {
+      return;
+    }
+  };
+
+  const onCaughtUpAnimationEnd = (event: AnimationEvent<HTMLDivElement>) => {
+    const name = event.animationName ?? "";
+    if (!name.split(",").some((part) => part.trim().includes("mbCaughtUpFlash"))) return;
+    setBoardPhase("collapsed");
+  };
+
+  useEffect(() => {
+    if (boardPhase !== "flash") return;
+    const t = window.setTimeout(() => {
+      setBoardPhase((phase) => (phase === "flash" ? "collapsed" : phase));
+    }, 3200);
+    return () => window.clearTimeout(t);
+  }, [boardPhase]);
+
+  if (boardPhase === "collapsed") {
+    if (composerOpen) {
+      return (
+        <MessageComposer
+          onClose={() => setComposerOpen(false)}
+          onPublish={(next) => {
+            const merged = [next, ...messages];
+            saveMessages(merged);
+            refresh();
+            setComposerOpen(false);
+          }}
+        />
+      );
+    }
+    if (isAdmin) {
+      return (
+        <div className="mb-collapsed-reopen">
+          <button type="button" className="btn btn-ghost btn-sm" onClick={() => setBoardPhase("open")}>
+            Show studio messages
+          </button>
+        </div>
+      );
+    }
+    if (isFamilyViewer && preview.length > 0) {
+      return (
+        <div className="mb-collapsed-family" role="region" aria-label="Studio messages">
+          <div className="mb-collapsed-family-row">
+            <p className="mb-collapsed-family-copy">
+              <strong>Studio messages</strong>
+              <span className="mb-collapsed-family-sep">·</span>
+              All read — your practice space is next below.
+            </p>
+            <div className="mb-collapsed-family-actions">
+              <Link className="btn btn-ghost btn-sm" href={`/messages/archive?from=${viewerRole}`}>
+                Past messages
+              </Link>
+              <button
+                type="button"
+                className="btn btn-secondary btn-sm"
+                onClick={() => {
+                  try {
+                    clearMessageBoardReadIds();
+                    refresh();
+                    setBoardPhase("open");
+                  } catch {
+                    return;
+                  }
+                }}
+              >
+                Show as new again
+              </button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+    return null;
+  }
+
+  if (boardPhase === "flash") {
+    return (
+      <div
+        className="mb-caught-up-flash"
+        role="status"
+        aria-live="polite"
+        onAnimationEnd={onCaughtUpAnimationEnd}
+      >
+        <span className="mb-caught-up-icon" aria-hidden>
+          ✓
+        </span>
+        <span className="mb-caught-up-text">You&apos;re all caught up</span>
+      </div>
+    );
+  }
 
   return (
     <section className="message-board" aria-label="Studio message board">
@@ -93,14 +221,17 @@ export function CadenzaMessageBoard({ viewerRole }: Props) {
               ? "Updates for students and families."
               : "Internal + external updates for your role."}
           </p>
+          {!isFamilyViewer && preview.length > 0 && unreadIds.length > 0 ? (
+            <p className="mb-sub mb-sub-muted">Use Mark all read (top right) or Mark read on each card.</p>
+          ) : null}
         </div>
         <div className="mb-actions">
           <Link className="btn btn-ghost" href={`/messages/archive?from=${viewerRole}`}>
             Past messages
           </Link>
           {unreadIds.length ? (
-            <button className="btn btn-secondary" type="button" onClick={markVisibleRead}>
-              Mark read
+            <button className="btn btn-secondary" type="button" onClick={() => void markVisibleRead()}>
+              Mark all read
             </button>
           ) : null}
           {isAdmin ? (
@@ -121,7 +252,14 @@ export function CadenzaMessageBoard({ viewerRole }: Props) {
                   <span className={`mb-pill ${message.audience === "internal" ? "mb-pill-int" : "mb-pill-ext"}`}>
                     {message.audience === "internal" ? "Internal" : "External"}
                   </span>
-                  {unread ? <span className="mb-dot" aria-label="Unread" /> : null}
+                  {unread ? (
+                    <span className="mb-card-top-actions">
+                      <span className="mb-dot" aria-label="Unread" />
+                      <button type="button" className="mb-mark-one" onClick={() => void markOneRead(message.id)}>
+                        Mark read
+                      </button>
+                    </span>
+                  ) : null}
                 </div>
                 {message.imageDataUrl && message.imageLayout === "header" ? (
                   // eslint-disable-next-line @next/next/no-img-element

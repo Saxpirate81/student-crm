@@ -11,6 +11,13 @@ export function useRepository() {
     setVersion((prev) => prev + 1);
   }, []);
 
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const bump = () => setVersion((prev) => prev + 1);
+    window.addEventListener("mock-repository-updated", bump);
+    return () => window.removeEventListener("mock-repository-updated", bump);
+  }, []);
+
   return {
     repository,
     version,
