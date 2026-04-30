@@ -32,6 +32,7 @@ export type StudentProfile = {
   primaryInstructorId: string;
   parentCrmId: string;
   enrolledPrograms: ProgramType[];
+  ageBand?: "under10" | "10to12" | "13to18" | "adult";
 };
 
 export type LessonSummary = {
@@ -104,12 +105,17 @@ export type StudentVideo = {
   id: string;
   studentCrmId: string;
   lessonId: string | null;
+  assignmentId?: string | null;
+  assignmentTitle?: string | null;
   categoryId: string;
   title: string;
+  description?: string | null;
   playbackUrl: string;
   thumbnailUrl: string;
   durationSec: number;
   uploaderRole: UploaderRole;
+  sourceType?: "record" | "upload" | "url" | "library";
+  compressionStatus?: "local-preview" | "queued" | "compressed";
   createdAt: string;
   archivedAt: string | null;
   deletedAt: string | null;

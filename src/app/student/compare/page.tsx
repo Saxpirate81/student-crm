@@ -4,12 +4,14 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useMemo } from "react";
 import { VideoCompareView } from "@/components/video/VideoCompareView";
+import { useCadenzaTheme } from "@/hooks/useCadenzaTheme";
 import { useRepository } from "@/lib/useRepository";
 
 function StudentCompareInner() {
   const searchParams = useSearchParams();
   const crm = searchParams.get("student") ?? "crm-alex";
   const { repository, version } = useRepository();
+  const { theme } = useCadenzaTheme();
 
   const { student, videos } = useMemo(() => {
     void version;
@@ -19,7 +21,7 @@ function StudentCompareInner() {
   }, [crm, repository, version]);
 
   return (
-    <div className="cadenza-app" data-theme="dark">
+    <div className="cadenza-app" data-theme={theme}>
       <main className="c-main">
         <div className="topbar">
           <Link className="btn btn-sm" href="/student">

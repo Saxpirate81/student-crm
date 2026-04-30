@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 
 const SOUND_START_THRESHOLD = 0.03;
+const MUSIC_BAND_THRESHOLD = 0.018;
 const SILENCE_STOP_MS = 5000;
 
 export type MicStatus = "idle" | "listening" | "denied";
@@ -15,7 +16,8 @@ type Options = {
 };
 
 /**
- * Starts/stops practice segments from ambient mic energy (music / voice).
+ * Starts/stops practice segments from ambient mic energy with a music/rhythm bias.
+ * Rapping, clapping, singing, and instruments should register; plain speech is less likely.
  * One instance per app area — avoid running two detectors at once.
  */
 export function useMicPracticeDetector({ enabled, onSegmentComplete, retryNonce = 0 }: Options) {
@@ -29,6 +31,8 @@ export function useMicPracticeDetector({ enabled, onSegmentComplete, retryNonce 
   const animationRef = useRef<number | null>(null);
   const activeSessionStartRef = useRef<number | null>(null);
   const silenceStartRef = useRef<number | null>(null);
+  const lastPeakAtRef = useRef<number | null>(null);
+  const rhythmicHitsRef = useRef<number[]>([]);
   const onCompleteRef = useRef(onSegmentComplete);
 
   useEffect(() => {
@@ -47,6 +51,8 @@ export function useMicPracticeDetector({ enabled, onSegmentComplete, retryNonce 
     analyserRef.current = null;
     activeSessionStartRef.current = null;
     silenceStartRef.current = null;
+    lastPeakAtRef.current = null;
+    rhythmicHitsRef.current = [];
     setActiveSessionStartMs(null);
     setMicStatus(mic);
   };
@@ -100,21 +106,35 @@ export function useMicPracticeDetector({ enabled, onSegmentComplete, retryNonce 
         analyserRef.current = analyser;
         setMicStatus("listening");
 
-        const buffer = new Uint8Array(analyser.frequencyBinCount);
+        const timeBuffer = new Uint8Array(analyser.frequencyBinCount);
+        const freqBuffer = new Uint8Array(analyser.frequencyBinCount);
 
         const detect = () => {
           if (!analyserRef.current) return;
-          analyserRef.current.getByteTimeDomainData(buffer);
+          analyserRef.current.getByteTimeDomainData(timeBuffer);
+          analyserRef.current.getByteFrequencyData(freqBuffer);
 
           let sum = 0;
-          for (let i = 0; i < buffer.length; i += 1) {
-            const normalized = (buffer[i] - 128) / 128;
+          for (let i = 0; i < timeBuffer.length; i += 1) {
+            const normalized = (timeBuffer[i] - 128) / 128;
             sum += normalized * normalized;
           }
-          const rms = Math.sqrt(sum / buffer.length);
+          const rms = Math.sqrt(sum / timeBuffer.length);
           const now = Date.now();
+          let musicBand = 0;
+          for (let i = 3; i < Math.min(freqBuffer.length, 180); i += 1) {
+            musicBand += freqBuffer[i] / 255;
+          }
+          const musicBandAvg = musicBand / Math.max(1, Math.min(freqBuffer.length, 180) - 3);
+          const isPeak = rms > SOUND_START_THRESHOLD * 1.45;
+          if (isPeak && (!lastPeakAtRef.current || now - lastPeakAtRef.current > 240)) {
+            lastPeakAtRef.current = now;
+            rhythmicHitsRef.current = [...rhythmicHitsRef.current.filter((hit) => now - hit < 4200), now];
+          }
+          const rhythmicEnough = rhythmicHitsRef.current.length >= 3;
+          const musicalEnough = musicBandAvg > MUSIC_BAND_THRESHOLD || rhythmicEnough;
 
-          if (rms > SOUND_START_THRESHOLD) {
+          if (rms > SOUND_START_THRESHOLD && musicalEnough) {
             silenceStartRef.current = null;
             if (!activeSessionStartRef.current) {
               activeSessionStartRef.current = now;

@@ -7,16 +7,23 @@ import { useQuickRecorder } from "@/hooks/useQuickRecorder";
 import { ExerciseCard } from "@/components/music/ExerciseCard";
 import { ExerciseStaffComposer } from "@/components/music/ExerciseStaffComposer";
 import { CadenzaMessageBoard } from "@/components/messaging/CadenzaMessageBoard";
+import { AddVideoModal, type VideoAssignmentOption } from "@/components/video/AddVideoModal";
 import type { StudentVideo } from "@/lib/domain/types";
 import {
   addListeningTrack,
   loadListeningState,
   type ListeningState,
 } from "@/lib/listening/mock-listening-store";
+import {
+  listPendingPracticeSubmissions,
+  reviewPracticeSubmission,
+  type PracticeSubmission,
+} from "@/lib/practice-loop";
 import { INSTRUMENT_OPTIONS } from "@/lib/music/notation";
 import { parseYouTubeVideoId, youTubeEmbedUrl, youTubeThumbUrl } from "@/lib/youtube";
 import { useRepository } from "@/lib/useRepository";
 import { useRotatingHeroHeadline } from "@/hooks/useRotatingHeroHeadline";
+import { useCadenzaTheme } from "@/hooks/useCadenzaTheme";
 
 const FALLBACK_VIDEO = "https://www.w3schools.com/html/mov_bbb.mp4";
 const FALLBACK_POSTER =
@@ -149,7 +156,7 @@ function InstructorVideoCard({
 export default function InstructorPage() {
   const pathname = usePathname();
   const { repository, refresh } = useRepository();
-  const [theme, setTheme] = useState<"dark" | "light">("dark");
+  const { theme, toggleTheme } = useCadenzaTheme();
   const [page, setPage] = useState<InstructorPageId>("dashboard");
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [studentCrmId, setStudentCrmId] = useState("crm-alex");
@@ -162,6 +169,15 @@ export default function InstructorPage() {
   const [listeningLessonId, setListeningLessonId] = useState("latest");
   const [listeningSongTitle, setListeningSongTitle] = useState("");
   const [listeningState, setListeningState] = useState<ListeningState>({ tracks: [], news: [] });
+  const [practiceReviewVersion, setPracticeReviewVersion] = useState(0);
+  const [pendingPracticeReviews, setPendingPracticeReviews] = useState<PracticeSubmission[]>([]);
+  const [reviewNotes, setReviewNotes] = useState<Record<string, string>>({});
+  const [videoModalOpen, setVideoModalOpen] = useState(false);
+  const [videoModalContext, setVideoModalContext] = useState<{
+    lessonId?: string | null;
+    assignmentId?: string | null;
+    assignmentTitle?: string | null;
+  } | null>(null);
   const [exerciseTitle, setExerciseTitle] = useState("Scale warmup");
   const [exerciseLessonId, setExerciseLessonId] = useState<string>("none");
   const [exerciseInstrument, setExerciseInstrument] = useState(INSTRUMENT_OPTIONS[0].value);
@@ -191,11 +207,32 @@ export default function InstructorPage() {
   const lessons = repository.listLessonsForStudent(studentCrmId);
   const exercises = repository.listExercisesForStudent(studentCrmId);
   const categories = repository.listCategories();
+  const videoAssignmentOptions: VideoAssignmentOption[] = lessons.flatMap((lesson) => [
+    {
+      id: `practice-${lesson.id}`,
+      lessonId: lesson.id,
+      title: `Practice ${lesson.title} focus points`,
+    },
+    {
+      id: `record-${lesson.id}`,
+      lessonId: lesson.id,
+      title: `Record a clean take for ${lesson.title}`,
+    },
+  ]);
   useEffect(() => {
     setListeningState(loadListeningState());
   }, [listeningVersion]);
 
   const listeningTracks = listeningState.tracks.filter((track) => track.studentCrmId === studentCrmId);
+  useEffect(() => {
+    setPendingPracticeReviews(listPendingPracticeSubmissions(studentCrmId));
+  }, [studentCrmId, practiceReviewVersion]);
+
+  useEffect(() => {
+    const refreshReviews = () => setPracticeReviewVersion((value) => value + 1);
+    window.addEventListener("practice-loop-updated", refreshReviews);
+    return () => window.removeEventListener("practice-loop-updated", refreshReviews);
+  }, []);
 
   const pageTitle: Record<InstructorPageId, string> = {
     dashboard: "Instructor Studio",
@@ -317,6 +354,11 @@ export default function InstructorPage() {
               <div className="su-role">Piano Instructor</div>
             </div>
           </div>
+          <button className="theme-toggle menu-theme-toggle" onClick={toggleTheme} type="button">
+            <span className="toggle-icon">{theme === "dark" ? "Moon" : "Sun"}</span>
+            <span className="toggle-track"><span className="toggle-knob" /></span>
+            <span className="toggle-lbl">{theme === "dark" ? "Dark" : "Light"}</span>
+          </button>
         </div>
       </aside>
 
@@ -330,19 +372,16 @@ export default function InstructorPage() {
           <div className="page-title">{pageTitle[page]}</div>
           <div className="topbar-right">
             <div className="xp-pill">Studio roster · {roster.length}</div>
-            <button className="theme-toggle" onClick={() => setTheme(theme === "dark" ? "light" : "dark")} type="button">
+            <button className="theme-toggle" onClick={toggleTheme} type="button">
               <span className="toggle-icon">{theme === "dark" ? "Moon" : "Sun"}</span>
               <span className="toggle-track"><span className="toggle-knob" /></span>
               <span className="toggle-lbl">{theme === "dark" ? "Dark" : "Light"}</span>
             </button>
-            <button className="btn btn-primary" type="button" onClick={() => setPage("uploads")}>
+            <button className="btn btn-primary" type="button" onClick={() => setVideoModalOpen(true)}>
               New Upload
             </button>
           </div>
         </div>
-
-        <CadenzaMessageBoard viewerRole="instructor" />
-
         <div className="content">
           {page === "dashboard" ? (
             <>
@@ -365,6 +404,8 @@ export default function InstructorPage() {
                   </select>
                 </label>
               </section>
+
+              <CadenzaMessageBoard viewerRole="instructor" />
 
               <section className="grid4">
                 <Metric label="Students" value={`${roster.length}`} sub="Active" tone="purple" />
@@ -398,9 +439,21 @@ export default function InstructorPage() {
               roster={roster}
               selectedStudentName={selectedStudent?.displayName ?? "Student"}
               lessons={lessons}
+              pendingPracticeReviews={pendingPracticeReviews}
               videos={activeVideos}
               exercisesCount={exercises.length}
               listeningCount={listeningTracks.length}
+              reviewNotes={reviewNotes}
+              setReviewNotes={setReviewNotes}
+              onReviewPractice={(id, status) => {
+                reviewPracticeSubmission(id, status, reviewNotes[id] ?? "");
+                setReviewNotes((current) => ({ ...current, [id]: "" }));
+                setPracticeReviewVersion((value) => value + 1);
+              }}
+              onAddVideoToLesson={(lesson) => {
+                setVideoModalContext({ lessonId: lesson.id });
+                setVideoModalOpen(true);
+              }}
               setPage={setPage}
               setStudentCrmId={setStudentCrmId}
             />
@@ -763,7 +816,30 @@ export default function InstructorPage() {
         ))}
       </nav>
 
-      <button className="fab" type="button" onClick={() => setPage("uploads")}>+</button>
+      <button className="fab" type="button" aria-label="Add video" onClick={() => setVideoModalOpen(true)}>♪</button>
+      {videoModalOpen ? (
+        <AddVideoModal
+          assignments={videoAssignmentOptions}
+          categories={categories}
+          initialAssignmentId={videoModalContext?.assignmentId}
+          initialAssignmentTitle={videoModalContext?.assignmentTitle}
+          initialLessonId={videoModalContext?.lessonId ?? lessons[0]?.id}
+          lessons={lessons}
+          onClose={() => {
+            setVideoModalOpen(false);
+            setVideoModalContext(null);
+          }}
+          onSave={(input) => {
+            repository.addVideo(input);
+            refresh();
+            setVideoModalOpen(false);
+            setVideoModalContext(null);
+          }}
+          savedVideos={activeVideos.filter((video) => video.uploaderRole === "instructor" || video.uploaderRole === "admin")}
+          studentCrmId={studentCrmId}
+          uploaderRole="instructor"
+        />
+      ) : null}
     </div>
   );
 }
@@ -772,18 +848,28 @@ function InstructorDashboard({
   roster,
   selectedStudentName,
   lessons,
+  pendingPracticeReviews,
   videos,
   exercisesCount,
   listeningCount,
+  reviewNotes,
+  setReviewNotes,
+  onReviewPractice,
+  onAddVideoToLesson,
   setPage,
   setStudentCrmId,
 }: {
   roster: Array<{ crmId: string; displayName: string; enrolledPrograms: string[] }>;
   selectedStudentName: string;
   lessons: Array<{ id: string; title: string; lessonNumber: number; instrument: string; scheduledDate: string; notes?: string }>;
+  pendingPracticeReviews: PracticeSubmission[];
   videos: StudentVideo[];
   exercisesCount: number;
   listeningCount: number;
+  reviewNotes: Record<string, string>;
+  setReviewNotes: (notes: Record<string, string>) => void;
+  onReviewPractice: (id: string, status: "reviewed" | "redo") => void;
+  onAddVideoToLesson: (lesson: { id: string; title: string }) => void;
   setPage: (page: InstructorPageId) => void;
   setStudentCrmId: (id: string) => void;
 }) {
@@ -813,11 +899,58 @@ function InstructorDashboard({
               <div className="card-title">Latest lesson notes</div>
               <div className="section-sub">{selectedStudentName}</div>
             </div>
-            <button className="btn btn-sm" type="button" onClick={() => setPage("exercises")}>Add exercise</button>
+            <div className="modal-acts">
+              <button className="btn btn-sm" type="button" onClick={() => setPage("exercises")}>Add exercise</button>
+              {lessons[0] ? (
+                <button className="btn btn-primary btn-sm" type="button" onClick={() => onAddVideoToLesson(lessons[0])}>
+                  Add video
+                </button>
+              ) : null}
+            </div>
           </div>
           <h2>{lessons[0]?.title ?? "No lesson yet"}</h2>
           <p>{lessons[0]?.notes ?? "When a lesson is added, its notes will appear here for instructor review."}</p>
         </div>
+      </section>
+
+      <section className="card review-queue-card">
+        <div className="card-header">
+          <div>
+            <div className="card-title">Instructor review queue</div>
+            <div className="section-sub">
+              {pendingPracticeReviews.length
+                ? `${pendingPracticeReviews.length} student submission${pendingPracticeReviews.length === 1 ? "" : "s"} waiting`
+                : "Practice submissions will appear here after students send evidence."}
+            </div>
+          </div>
+          <span className="badge b-gold">Review loop</span>
+        </div>
+        {pendingPracticeReviews.slice(0, 4).map((submission) => (
+          <article className="review-row" key={submission.id}>
+            <div>
+              <span className={`badge ${submission.status === "redo" ? "b-red" : "b-purple"}`}>
+                {submission.status === "redo" ? "Redo" : "Needs review"}
+              </span>
+              <strong>{submission.body}</strong>
+              <small>Lesson {submission.lessonId} · {new Date(submission.createdAt).toLocaleString()}</small>
+            </div>
+            <textarea
+              className="inp ta"
+              value={reviewNotes[submission.id] ?? ""}
+              onChange={(event) => setReviewNotes({ ...reviewNotes, [submission.id]: event.target.value })}
+              placeholder="Leave a quick instructor note..."
+            />
+            <div className="review-actions">
+              <button className="btn btn-primary btn-sm" type="button" onClick={() => onReviewPractice(submission.id, "reviewed")}>
+                Mark reviewed
+              </button>
+              <button className="btn btn-secondary btn-sm" type="button" onClick={() => onReviewPractice(submission.id, "redo")}>
+                Request redo
+              </button>
+            </div>
+          </article>
+        ))}
+        {!pendingPracticeReviews.length ? <p className="empty-copy">No practice evidence waiting right now.</p> : null}
       </section>
 
       <section className="grid2">

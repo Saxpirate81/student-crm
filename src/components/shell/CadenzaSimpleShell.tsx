@@ -1,6 +1,7 @@
 "use client";
 
-import { type ReactNode, useMemo, useState } from "react";
+import { type ReactNode, useMemo } from "react";
+import { useCadenzaTheme } from "@/hooks/useCadenzaTheme";
 
 type Props = {
   title: string;
@@ -9,7 +10,7 @@ type Props = {
 };
 
 export function CadenzaSimpleShell({ title, right, children }: Props) {
-  const [theme, setTheme] = useState<"dark" | "light">("dark");
+  const { theme, toggleTheme } = useCadenzaTheme();
   const pageTitle = useMemo(() => title, [title]);
 
   return (
@@ -18,7 +19,7 @@ export function CadenzaSimpleShell({ title, right, children }: Props) {
         <div className="topbar">
           <div className="page-title">{pageTitle}</div>
           <div className="topbar-right">
-            <button className="theme-toggle" onClick={() => setTheme(theme === "dark" ? "light" : "dark")} type="button">
+            <button className="theme-toggle" onClick={toggleTheme} type="button">
               <span className="toggle-icon">{theme === "dark" ? "Moon" : "Sun"}</span>
               <span className="toggle-track">
                 <span className="toggle-knob" />

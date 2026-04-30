@@ -9,6 +9,7 @@ import { CadenzaMessageBoard } from "@/components/messaging/CadenzaMessageBoard"
 import { useProducerWorkspace } from "@/hooks/useProducerWorkspace";
 import { useAuth } from "@/lib/auth/auth-context";
 import { useRotatingHeroHeadline } from "@/hooks/useRotatingHeroHeadline";
+import { useCadenzaTheme } from "@/hooks/useCadenzaTheme";
 
 type ProducerPageId = "queue" | "playbook" | "matrix";
 
@@ -59,7 +60,7 @@ function StudioIcon({ icon, className = "" }: { icon: keyof typeof icons; classN
 export default function ProducerPage() {
   const pathname = usePathname();
   const { session, ready } = useAuth();
-  const [theme, setTheme] = useState<"dark" | "light">("dark");
+  const { theme, toggleTheme } = useCadenzaTheme();
   const [page, setPage] = useState<ProducerPageId>("queue");
   const [drawerOpen, setDrawerOpen] = useState(false);
   const { playbookVersion, setPlaybookVersion, rules, setRules, tasks, setTasks, playbookVersions } = useProducerWorkspace();
@@ -124,6 +125,11 @@ export default function ProducerPage() {
               <div className="su-role">{session?.kind === "producer" ? session.email : "Scaffold Mode"}</div>
             </div>
           </div>
+          <button className="theme-toggle menu-theme-toggle" onClick={toggleTheme} type="button">
+            <span className="toggle-icon">{theme === "dark" ? "Moon" : "Sun"}</span>
+            <span className="toggle-track"><span className="toggle-knob" /></span>
+            <span className="toggle-lbl">{theme === "dark" ? "Dark" : "Light"}</span>
+          </button>
         </div>
       </aside>
 
@@ -137,16 +143,13 @@ export default function ProducerPage() {
           <div className="page-title">{pageTitle[page]}</div>
           <div className="topbar-right">
             <div className="xp-pill">Producer Console</div>
-            <button className="theme-toggle" onClick={() => setTheme(theme === "dark" ? "light" : "dark")} type="button">
+            <button className="theme-toggle" onClick={toggleTheme} type="button">
               <span className="toggle-icon">{theme === "dark" ? "Moon" : "Sun"}</span>
               <span className="toggle-track"><span className="toggle-knob" /></span>
               <span className="toggle-lbl">{theme === "dark" ? "Dark" : "Light"}</span>
             </button>
           </div>
         </div>
-
-        <CadenzaMessageBoard viewerRole="producer" />
-
         <div className="content">
           <section className="studio-hero instructor-hero">
             <div>
@@ -162,6 +165,8 @@ export default function ProducerPage() {
               <span className="badge b-gold">Preview mode</span>
             )}
           </section>
+
+          <CadenzaMessageBoard viewerRole="producer" />
 
           {page === "queue" ? (
             <ProducerQueueView

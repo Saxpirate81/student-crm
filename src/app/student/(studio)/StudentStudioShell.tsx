@@ -12,6 +12,7 @@ import { DEFAULT_DAILY_GOAL_MINUTES, monSunIndexForDate, weekMinutesMonToSun } f
 import { useAuth } from "@/lib/auth/auth-context";
 import { useMetronome } from "@/hooks/useMetronome";
 import { useMicPracticeDetector } from "@/hooks/useMicPracticeDetector";
+import { useCadenzaTheme } from "@/hooks/useCadenzaTheme";
 import {
   addListeningSeconds,
   addListeningTrack,
@@ -21,10 +22,20 @@ import {
   type ListeningState,
   type NewsUpdate,
 } from "@/lib/listening/mock-listening-store";
+import {
+  addPracticeSubmission,
+  getPracticePlanForLesson,
+  listPracticeSubmissions,
+  type PracticePlan,
+  type PracticeSubmission,
+} from "@/lib/practice-loop";
+import { getStudentCopyProfile, type StudentCopyProfile } from "@/lib/student-engagement";
 import { useRepository } from "@/lib/useRepository";
 import { CadenzaMessageBoard } from "@/components/messaging/CadenzaMessageBoard";
 import { useRotatingHeroHeadline } from "@/hooks/useRotatingHeroHeadline";
 import { PracticeGoalRing } from "@/components/student/PracticeGoalRing";
+import { AddVideoModal, type VideoAssignmentOption } from "@/components/video/AddVideoModal";
+import { GamifiedRewardTrack } from "@/components/gamification/GamifiedRewardTrack";
 
 export type StudioPage = "dashboard" | "practice" | "listening" | "achievements" | "progress";
 
@@ -243,7 +254,7 @@ export function StudentStudioLayout({ children }: { children: ReactNode }) {
   );
   const { session, ready } = useAuth();
   const { repository, version } = useRepository();
-  const [theme, setTheme] = useState<"dark" | "light">("dark");
+  const { theme, toggleTheme } = useCadenzaTheme();
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [studentCrmId, setStudentCrmId] = useState("crm-alex");
   const [practiceSeconds, setPracticeSeconds] = useState(0);
@@ -255,6 +266,15 @@ export function StudentStudioLayout({ children }: { children: ReactNode }) {
   const [listeningLessonId, setListeningLessonId] = useState("latest");
   const [listeningSongTitle, setListeningSongTitle] = useState("");
   const [listeningState, setListeningState] = useState<ListeningState>({ tracks: [], news: [] });
+  const [practiceLoopVersion, setPracticeLoopVersion] = useState(0);
+  const [practiceSubmissions, setPracticeSubmissions] = useState<PracticeSubmission[]>([]);
+  const [practiceSubmissionDraft, setPracticeSubmissionDraft] = useState("");
+  const [practiceSubmissionItemId, setPracticeSubmissionItemId] = useState<string | null>(null);
+  const [videoModalContext, setVideoModalContext] = useState<{
+    lessonId?: string | null;
+    assignmentId?: string | null;
+    assignmentTitle?: string | null;
+  } | null>(null);
 
   const selectableStudents = useMemo(() => {
     void version;
@@ -277,7 +297,10 @@ export function StudentStudioLayout({ children }: { children: ReactNode }) {
   }, [ready, selectableStudents, session]);
 
   const student = repository.getStudent(studentCrmId) ?? selectableStudents[0] ?? repository.listStudents()[0];
-  const programs = repository.listProgramsForStudent(student?.crmId ?? studentCrmId);
+  const programs = useMemo(
+    () => repository.listProgramsForStudent(student?.crmId ?? studentCrmId),
+    [repository, student?.crmId, studentCrmId],
+  );
   const [activeProgram, setActiveProgram] = useState<ProgramType>(programs[0] ?? "lessons");
 
   useEffect(() => {
@@ -286,10 +309,22 @@ export function StudentStudioLayout({ children }: { children: ReactNode }) {
     setActiveProgram((current) => (next.includes(current) ? current : next[0] ?? "lessons"));
   }, [student, repository, version]);
 
-  const lessons = student ? repository.listLessonsForStudent(student.crmId, activeProgram) : [];
-  const allLessons = student ? repository.listLessonsForStudent(student.crmId) : [];
-  const videos = student ? repository.listVideosForStudent(student.crmId) : [];
-  const exercises = student ? repository.listExercisesForStudent(student.crmId) : [];
+  const lessons = useMemo(() => {
+    void version;
+    return student ? repository.listLessonsForStudent(student.crmId, activeProgram) : [];
+  }, [activeProgram, repository, student, version]);
+  const allLessons = useMemo(() => {
+    void version;
+    return student ? repository.listLessonsForStudent(student.crmId) : [];
+  }, [repository, student, version]);
+  const videos = useMemo(() => {
+    void version;
+    return student ? repository.listVideosForStudent(student.crmId) : [];
+  }, [repository, student, version]);
+  const exercises = useMemo(() => {
+    void version;
+    return student ? repository.listExercisesForStudent(student.crmId) : [];
+  }, [repository, student, version]);
   useEffect(() => {
     setListeningState(loadListeningState());
   }, [listeningVersion]);
@@ -302,6 +337,12 @@ export function StudentStudioLayout({ children }: { children: ReactNode }) {
     ...assignment,
     done: completedAssignments[assignment.id] ?? assignment.done,
   }));
+  const categories = repository.listCategories();
+  const videoAssignmentOptions: VideoAssignmentOption[] = assignments.map((assignment) => ({
+    id: assignment.id,
+    lessonId: assignment.lessonId ?? null,
+    title: assignment.title,
+  }));
   const openAssignments = assignments.filter((assignment) => !assignment.done);
   const totalXp = 2450 + videos.length * 120 + exercises.length * 75 + assignments.filter((item) => item.done).length * 40;
   const level = Math.max(1, Math.floor(totalXp / 650));
@@ -309,9 +350,12 @@ export function StudentStudioLayout({ children }: { children: ReactNode }) {
   const weekPractice = weekMinutesMonToSun(dailyMap);
   const weekTotal = weekPractice.reduce((sum, value) => sum + value, 0);
   const streak = student ? repository.getPracticeStreakDays(student.crmId) : 0;
-  const dailySummary: DailyPracticeSummary = student
-    ? repository.getDailyPracticeSummary(student.crmId)
-    : { dayLocal: "", minutes: 0, goalMinutes: DEFAULT_DAILY_GOAL_MINUTES };
+  const dailySummary: DailyPracticeSummary = useMemo(() => {
+    void version;
+    return student
+      ? repository.getDailyPracticeSummary(student.crmId)
+      : { dayLocal: "", minutes: 0, goalMinutes: DEFAULT_DAILY_GOAL_MINUTES };
+  }, [repository, student, version]);
   const todayHeatIndex = monSunIndexForDate();
   const metronome = useMetronome(repository, MOCK_USER_KEYS.student);
   const micPractice = useMicPracticeDetector({
@@ -322,6 +366,26 @@ export function StudentStudioLayout({ children }: { children: ReactNode }) {
   const livePracticeSeconds = practiceSeconds + micPractice.activeSeconds;
   const practiceRunning = studioNav === "practice" && micPractice.activeSeconds > 0;
   const latestLesson = allLessons[0];
+  const studentCopy = getStudentCopyProfile(student);
+  const todayPracticePlan = latestLesson && student ? getPracticePlanForLesson(latestLesson, student.ageBand ?? "13to18") : null;
+
+  useEffect(() => {
+    setPracticeSubmissions(student ? listPracticeSubmissions(student.crmId) : []);
+  }, [student, student?.crmId, practiceLoopVersion]);
+
+  useEffect(() => {
+    if (!todayPracticePlan) return;
+    setPracticeSubmissionItemId((current) =>
+      current && todayPracticePlan.items.some((item) => item.id === current) ? current : todayPracticePlan.items[0]?.id ?? null,
+    );
+  }, [todayPracticePlan]);
+
+  useEffect(() => {
+    const refreshLoop = () => setPracticeLoopVersion((value) => value + 1);
+    window.addEventListener("practice-loop-updated", refreshLoop);
+    return () => window.removeEventListener("practice-loop-updated", refreshLoop);
+  }, []);
+
   const practiceRanking = student
     ? practiceRankingFor(student, repository.listStudents(), weekTotal)
     : null;
@@ -386,11 +450,41 @@ export function StudentStudioLayout({ children }: { children: ReactNode }) {
             ...current,
             [id]: !assignments.find((a) => a.id === id)?.done,
           })),
+        onAddVideoToAssignment: (assignment: Assignment) =>
+          setVideoModalContext({
+            lessonId: assignment.lessonId,
+            assignmentId: assignment.id,
+            assignmentTitle: assignment.title,
+          }),
         metronome,
         practiceRunning,
         latestLesson,
         micStatus: micPractice.micStatus,
         onRetryMic: () => setMicRetryNonce((value) => value + 1),
+        plan: todayPracticePlan,
+        submissionDraft: practiceSubmissionDraft,
+        submissionItemId: practiceSubmissionItemId,
+        submissions: practiceSubmissions,
+        studentCopy,
+        setSubmissionDraft: setPracticeSubmissionDraft,
+        setSubmissionItemId: setPracticeSubmissionItemId,
+        onSubmitPractice: () => {
+          if (!todayPracticePlan || !practiceSubmissionDraft.trim()) return;
+          addPracticeSubmission({
+            plan: todayPracticePlan,
+            itemId: practiceSubmissionItemId,
+            body: practiceSubmissionDraft.trim(),
+            durationSec: livePracticeSeconds || undefined,
+          });
+          repository.appendActivityEvent({
+            studentCrmId: todayPracticePlan.studentCrmId,
+            kind: "assignment_done",
+            title: "Practice submitted for review",
+            detail: todayPracticePlan.lessonTitle,
+          });
+          setPracticeSubmissionDraft("");
+          setPracticeLoopVersion((value) => value + 1);
+        },
         practiceSeconds: livePracticeSeconds,
         videos,
         weekPractice,
@@ -476,15 +570,21 @@ export function StudentStudioLayout({ children }: { children: ReactNode }) {
       newsUpdates,
       openStudioPage,
       practiceRanking,
+      practiceSubmissionDraft,
+      practiceSubmissionItemId,
+      practiceSubmissions,
       practiceRunning,
       profileName,
       programs,
+      repository,
       latestLesson,
+      studentCopy,
       selectableStudents,
       session?.kind,
       streak,
       student,
       studentCrmId,
+      todayPracticePlan,
       todayHeatIndex,
       totalXp,
       unreadNewsCount,
@@ -522,7 +622,7 @@ export function StudentStudioLayout({ children }: { children: ReactNode }) {
           <select
             aria-label="Switch app view"
             className="rt-select"
-            value={appViewOptions.some((option) => option.href === pathname) ? pathname : "/instructor"}
+            value={appViewOptions.find((option) => pathname.startsWith(option.href))?.href ?? "/student"}
             onChange={(event) => {
               const nextPath = event.target.value;
               if (nextPath) window.location.href = nextPath;
@@ -563,6 +663,11 @@ export function StudentStudioLayout({ children }: { children: ReactNode }) {
               <div className="su-role">Lv.{level} · {programs.map((program) => programLabels[program]).join(", ")}</div>
             </div>
           </div>
+          <button className="theme-toggle menu-theme-toggle" onClick={toggleTheme} type="button">
+            <span className="toggle-icon">{theme === "dark" ? "Moon" : "Sun"}</span>
+            <span className="toggle-track"><span className="toggle-knob" /></span>
+            <span className="toggle-lbl">{theme === "dark" ? "Dark" : "Light"}</span>
+          </button>
         </div>
       </aside>
 
@@ -576,7 +681,7 @@ export function StudentStudioLayout({ children }: { children: ReactNode }) {
           <div className="page-title">{topbarTitle}</div>
           <div className="topbar-right">
             <div className="xp-pill">+ {totalXp.toLocaleString()} XP</div>
-            <button className="theme-toggle" onClick={() => setTheme(theme === "dark" ? "light" : "dark")} type="button">
+            <button className="theme-toggle" onClick={toggleTheme} type="button">
               <span className="toggle-icon">{theme === "dark" ? "Moon" : "Sun"}</span>
               <span className="toggle-track"><span className="toggle-knob" /></span>
               <span className="toggle-lbl">{theme === "dark" ? "Dark" : "Light"}</span>
@@ -589,9 +694,6 @@ export function StudentStudioLayout({ children }: { children: ReactNode }) {
             </Link>
           </div>
         </div>
-
-        <CadenzaMessageBoard viewerRole="student" />
-
         <div className="content">{children}</div>
       </main>
 
@@ -610,9 +712,27 @@ export function StudentStudioLayout({ children }: { children: ReactNode }) {
         ))}
       </nav>
 
-      <Link className="fab" href="/student/practice" aria-label="Open practice">
+      <button className="fab" type="button" aria-label="Add video" onClick={() => setVideoModalContext({ lessonId: latestLesson?.id })}>
         ♪
-      </Link>
+      </button>
+      {videoModalContext ? (
+        <AddVideoModal
+          assignments={videoAssignmentOptions}
+          categories={categories}
+          initialAssignmentId={videoModalContext.assignmentId}
+          initialAssignmentTitle={videoModalContext.assignmentTitle}
+          initialLessonId={videoModalContext.lessonId}
+          lessons={allLessons}
+          onClose={() => setVideoModalContext(null)}
+          onSave={(input) => {
+            repository.addVideo(input);
+            setVideoModalContext(null);
+          }}
+          savedVideos={videos}
+          studentCrmId={student?.crmId ?? studentCrmId}
+          uploaderRole="student"
+        />
+      ) : null}
     </div>
     </StudentStudioProvider>
   );
@@ -680,6 +800,11 @@ export function StudentStudioDashboard(props: {
   } = props;
 
   const greetingHeadline = useRotatingHeroHeadline("student", firstName);
+  const topPracticeMinutes = practiceRanking ? Math.max(...practiceRanking.leaders.map((leader) => leader.minutes), weekTotal, 1) : 1;
+  const nextPracticeTarget = practiceRanking
+    ? practiceRanking.leaders.find((leader) => leader.minutes > weekTotal)
+    : null;
+  const minutesToNextRank = nextPracticeTarget ? Math.max(1, nextPracticeTarget.minutes - weekTotal + 1) : 0;
 
   return (
     <>
@@ -706,6 +831,74 @@ export function StudentStudioDashboard(props: {
           </label>
         )}
       </section>
+
+      <CadenzaMessageBoard viewerRole="student" />
+
+      <GamifiedRewardTrack
+        eyebrow="Reward path"
+        title="Weekly XP quest"
+        subtitle="Practice minutes, listening time, and submitted checkpoints move this bar."
+        pointsLabel="Studio XP"
+        pointsValue={totalXp.toLocaleString()}
+        progress={Math.min(100, Math.round((weekTotal / 210) * 100))}
+        steps={[
+          { label: "Start", value: `${streak}d`, tone: "gold", unlocked: streak > 0 },
+          { label: "Listen", value: `${Math.round(listeningTracks.reduce((sum, track) => sum + track.listenedSeconds, 0) / 60)}m`, tone: "cyan", unlocked: listeningTracks.length > 0 },
+          { label: "Submit", value: `${assignments.filter((item) => item.done).length}/${assignments.length}`, tone: "purple", unlocked: assignments.some((item) => item.done) },
+          { label: "Goal", value: "210m", tone: "green", unlocked: weekTotal >= 210 },
+        ]}
+      />
+
+      {practiceRanking ? (
+        <section className="practice-league-card">
+          <div className="practice-league-glow" aria-hidden />
+          <div className="practice-league-head">
+            <div>
+              <p className="card-title">Practice league</p>
+              <h2>Age division {practiceRanking.band}</h2>
+              <p>
+                Rank is based on this week&apos;s practice minutes. Keep stacking sessions to climb before lesson day.
+              </p>
+            </div>
+            <div className="practice-rank-medal">
+              <span>Rank</span>
+              <strong>#{practiceRanking.rank}</strong>
+              <small>of {practiceRanking.total}</small>
+            </div>
+          </div>
+          <div className="practice-league-score">
+            <div>
+              <span>Your week</span>
+              <strong>{weekTotal}m</strong>
+            </div>
+            <div>
+              <span>Next climb</span>
+              <strong>{minutesToNextRank ? `${minutesToNextRank}m` : "Top"}</strong>
+            </div>
+            <div>
+              <span>Division</span>
+              <strong>{practiceRanking.age}</strong>
+            </div>
+          </div>
+          <div className="practice-league-board">
+            {practiceRanking.leaders.map((leader, index) => {
+              const isCurrent = leader.crmId === student?.crmId;
+              const progress = Math.max(8, Math.round((leader.minutes / topPracticeMinutes) * 100));
+              return (
+                <div className={`practice-league-row ${isCurrent ? "current" : ""}`} key={leader.crmId}>
+                  <span className={`league-place place-${index + 1}`}>{index + 1}</span>
+                  <span className="league-avatar">{initials(leader.name)}</span>
+                  <span className="league-name">
+                    <strong>{leader.name}{isCurrent ? " (You)" : ""}</strong>
+                    <span className="league-progress"><span style={{ width: `${progress}%` }} /></span>
+                  </span>
+                  <span className="league-minutes">{leader.minutes}m</span>
+                </div>
+              );
+            })}
+          </div>
+        </section>
+      ) : null}
 
       <section className="practice-hero-card">
         <PracticeGoalRing minutes={dailySummary.minutes} goalMinutes={dailySummary.goalMinutes} />
@@ -738,27 +931,6 @@ export function StudentStudioDashboard(props: {
         <Metric label="Tasks" value={`${openAssignments}`} sub="Open" tone={openAssignments ? "red" : "green"} />
         <Metric label="Week" value={`${weekTotal}m`} sub="Goal: 210" tone="cyan" />
       </section>
-
-      {practiceRanking ? (
-        <section className="card ranking-card">
-          <div className="card-header">
-            <div>
-              <div className="card-title">Practice ranking</div>
-              <div className="section-sub">Age group {practiceRanking.band} · mock until student ages come from the database.</div>
-            </div>
-            <span className="rank-pill">#{practiceRanking.rank} / {practiceRanking.total}</span>
-          </div>
-          <div className="ranking-grid">
-            {practiceRanking.leaders.map((leader, index) => (
-              <div className={`rank-row ${leader.crmId === student?.crmId ? "current" : ""}`} key={leader.crmId}>
-                <span className="rank-num">{index + 1}</span>
-                <span className="rank-name">{leader.name}</span>
-                <span className="rank-min">{leader.minutes}m</span>
-              </div>
-            ))}
-          </div>
-        </section>
-      ) : null}
 
       <section className="grid2">
         <div className="card message-board">
@@ -959,7 +1131,15 @@ function PracticeCounter({
   );
 }
 
-function AssignmentRow({ assignment, onToggle }: { assignment: Assignment; onToggle: () => void }) {
+function AssignmentRow({
+  assignment,
+  onAddVideo,
+  onToggle,
+}: {
+  assignment: Assignment;
+  onAddVideo?: (assignment: Assignment) => void;
+  onToggle: () => void;
+}) {
   return (
     <div className="arow">
       <button className={`check ${assignment.done ? "done" : ""}`} onClick={onToggle} type="button" aria-label="Toggle assignment">
@@ -972,6 +1152,11 @@ function AssignmentRow({ assignment, onToggle }: { assignment: Assignment; onTog
           <span className="badge b-purple">+{assignment.xpReward}XP</span>
           <span>Due {assignment.due}</span>
           {assignment.lessonId ? <Link href={`/student/lessons/${assignment.lessonId}`}>Lesson</Link> : null}
+          {onAddVideo ? (
+            <button className="assignment-video-btn" type="button" onClick={() => onAddVideo(assignment)}>
+              Add video
+            </button>
+          ) : null}
         </div>
         {assignment.notes ? <div className="arow-note">{assignment.notes}</div> : null}
       </div>
@@ -981,9 +1166,11 @@ function AssignmentRow({ assignment, onToggle }: { assignment: Assignment; onTog
 
 export function StudentStudioAssignmentsPage({
   assignments,
+  onAddVideoToAssignment,
   toggleAssignment,
 }: {
   assignments: Assignment[];
+  onAddVideoToAssignment?: (assignment: Assignment) => void;
   toggleAssignment: (id: string) => void;
 }) {
   const done = assignments.filter((assignment) => assignment.done).length;
@@ -998,7 +1185,14 @@ export function StudentStudioAssignmentsPage({
       </div>
       <div className="xpbar-wrap"><div className="xpbar-fill" style={{ width: `${Math.round((done / assignments.length) * 100)}%` }} /></div>
       <div className="mt-12">
-        {assignments.map((assignment) => <AssignmentRow key={assignment.id} assignment={assignment} onToggle={() => toggleAssignment(assignment.id)} />)}
+        {assignments.map((assignment) => (
+          <AssignmentRow
+            key={assignment.id}
+            assignment={assignment}
+            onAddVideo={onAddVideoToAssignment}
+            onToggle={() => toggleAssignment(assignment.id)}
+          />
+        ))}
       </div>
     </section>
   );
@@ -1011,8 +1205,17 @@ export function StudentStudioPracticePage(props: {
   metronome: ReturnType<typeof useMetronome>;
   micStatus: ReturnType<typeof useMicPracticeDetector>["micStatus"];
   onRetryMic: () => void;
+  onAddVideoToAssignment?: (assignment: Assignment) => void;
+  onSubmitPractice: () => void;
+  plan: PracticePlan | null;
   practiceRunning: boolean;
   practiceSeconds: number;
+  setSubmissionDraft: (value: string) => void;
+  setSubmissionItemId: (value: string | null) => void;
+  studentCopy: StudentCopyProfile;
+  submissionDraft: string;
+  submissionItemId: string | null;
+  submissions: PracticeSubmission[];
   videos: StudentVideo[];
   weekPractice: number[];
 }) {
@@ -1025,10 +1228,10 @@ export function StudentStudioPracticePage(props: {
 
   return (
     <>
-      <section className="card latest-notes-card">
+      <section className="card latest-notes-card practice-plan-card">
         <div className="card-header">
           <div>
-            <div className="card-title">Latest lesson notes</div>
+            <div className="card-title">{props.studentCopy.planTitle}</div>
             <div className="section-sub">
               {props.latestLesson
                 ? `Lesson ${props.latestLesson.lessonNumber} · ${props.latestLesson.instrument} · ${formatShortDate(props.latestLesson.scheduledDate)}`
@@ -1041,10 +1244,69 @@ export function StudentStudioPracticePage(props: {
             </Link>
           ) : null}
         </div>
-        <h2>{props.latestLesson?.title ?? "Practice focus will appear here"}</h2>
-        <p>{props.latestLesson?.notes ?? "When your instructor adds the next lesson, its notes will become the practice plan for this tab."}</p>
+        <h2>{props.plan?.lessonTitle ?? props.latestLesson?.title ?? "Practice focus will appear here"}</h2>
+        <p>{props.plan?.recap ?? props.latestLesson?.notes ?? "When your instructor adds the next lesson, its notes will become the practice plan for this tab."}</p>
+        <p className="practice-plan-intro">{props.studentCopy.planIntro}</p>
+        {props.plan ? (
+          <div className="practice-plan-grid">
+            {props.plan.items.map((item) => (
+              <button
+                className={`practice-plan-step ${props.submissionItemId === item.id ? "active" : ""}`}
+                key={item.id}
+                onClick={() => props.setSubmissionItemId(item.id)}
+                type="button"
+              >
+                <span className={`badge ${item.kind === "record" ? "b-gold" : item.kind === "focus" ? "b-purple" : "b-blue"}`}>
+                  {item.minutes}m
+                </span>
+                <strong>{item.title}</strong>
+                <small>{item.detail}</small>
+              </button>
+            ))}
+          </div>
+        ) : null}
       </section>
-      <StudentStudioAssignmentsPage assignments={props.assignments} toggleAssignment={props.toggleAssignment} />
+      <section className="card submission-card">
+        <div className="card-header">
+          <div>
+            <div className="card-title">Student submission</div>
+            <div className="section-sub">{props.studentCopy.evidenceHint}</div>
+          </div>
+          <span className="badge b-cyan">{props.submissions.filter((item) => item.status === "needs_review").length} in review</span>
+        </div>
+        <label className="form-grp">
+          <span className="form-lbl">{props.studentCopy.submitLabel}</span>
+          <textarea
+            className="inp ta"
+            value={props.submissionDraft}
+            onChange={(event) => props.setSubmissionDraft(event.target.value)}
+            placeholder={props.studentCopy.submitPlaceholder}
+          />
+        </label>
+        <div className="modal-acts">
+          <button
+            className="btn btn-primary"
+            disabled={!props.plan || !props.submissionDraft.trim()}
+            onClick={props.onSubmitPractice}
+            type="button"
+          >
+            {props.studentCopy.submitButton}
+          </button>
+        </div>
+        {props.submissions.slice(0, 3).map((submission) => (
+          <div className="submission-row" key={submission.id}>
+            <span className={`badge ${submission.status === "reviewed" ? "b-green" : submission.status === "redo" ? "b-red" : "b-gold"}`}>
+              {submission.status === "needs_review" ? "Review" : submission.status}
+            </span>
+            <span>{submission.body}</span>
+          </div>
+        ))}
+      </section>
+      <StudentStudioAssignmentsPage
+        assignments={props.assignments}
+        onAddVideoToAssignment={props.onAddVideoToAssignment}
+        toggleAssignment={props.toggleAssignment}
+      />
       <section className="grid2">
         <MetronomePanel metronome={props.metronome} />
         <PracticeCounter

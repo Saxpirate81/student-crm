@@ -27,12 +27,17 @@ export type ListVideosOptions = {
 export type AddVideoInput = {
   studentCrmId: string;
   lessonId: string | null;
+  assignmentId?: string | null;
+  assignmentTitle?: string | null;
   categoryId: string;
   title: string;
+  description?: string | null;
   playbackUrl: string;
   thumbnailUrl: string;
   durationSec: number;
   uploaderRole: UploaderRole;
+  sourceType?: StudentVideo["sourceType"];
+  compressionStatus?: StudentVideo["compressionStatus"];
 };
 
 export type ListExercisesOptions = {

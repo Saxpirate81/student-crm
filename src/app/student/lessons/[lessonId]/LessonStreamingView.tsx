@@ -111,13 +111,10 @@ export function LessonStreamingView() {
 
   if (!lesson) {
     return (
-      <div className="mx-auto max-w-lg space-y-4 rounded-3xl border border-amber-500/20 bg-amber-950/40 p-8 text-center">
-        <h1 className="text-lg font-semibold text-amber-100">Lesson not found</h1>
-        <p className="text-sm text-amber-200/80">That lesson may have been removed or the link is incorrect.</p>
-        <Link
-          href="/student"
-          className="inline-flex rounded-full bg-amber-500 px-5 py-2.5 text-sm font-semibold text-amber-950 hover:bg-amber-400"
-        >
+      <div className="card mx-auto max-w-lg text-center">
+        <div className="card-title">Lesson not found</div>
+        <p className="section-sub">That lesson may have been removed or the link is incorrect.</p>
+        <Link href="/student" className="btn btn-primary mt-4 inline-flex">
           Back to schedule
         </Link>
       </div>
@@ -128,43 +125,38 @@ export function LessonStreamingView() {
     lesson.program === "lessons" ? "Private lessons" : lesson.program === "bands" ? "Bands" : "Camps";
 
   return (
-    <div className="relative left-1/2 w-screen max-w-none -translate-x-1/2 bg-slate-100 pb-20 pt-1 text-slate-900 dark:bg-zinc-950 dark:text-zinc-100 md:pb-28">
-      <div
-        className="pointer-events-none absolute inset-x-0 top-0 h-[min(52vh,520px)] bg-[radial-gradient(ellipse_90%_100%_at_50%_-10%,rgba(139,92,246,0.18),transparent_55%),radial-gradient(ellipse_60%_80%_at_100%_0%,rgba(59,130,246,0.08),transparent_50%),radial-gradient(ellipse_50%_60%_at_0%_20%,rgba(244,114,182,0.06),transparent_45%)] dark:bg-[radial-gradient(ellipse_90%_100%_at_50%_-10%,rgba(139,92,246,0.35),transparent_55%),radial-gradient(ellipse_60%_80%_at_100%_0%,rgba(59,130,246,0.12),transparent_50%),radial-gradient(ellipse_50%_60%_at_0%_20%,rgba(244,114,182,0.1),transparent_45%)]"
-        aria-hidden
-      />
-
-      <div className="relative mx-auto max-w-6xl px-4 md:px-8 lg:max-w-7xl">
-        <header className="flex flex-wrap items-start justify-between gap-4 pb-8 pt-4 md:pb-10 md:pt-6">
+    <div className="student-detail-view">
+      <div className="student-detail-inner">
+        <header className="studio-hero lesson-detail-hero">
           <div className="min-w-0 space-y-3">
             <Link
               href="/student"
-              className="inline-flex items-center gap-1 text-xs font-semibold uppercase tracking-wider text-violet-700 transition hover:text-violet-600 dark:text-violet-300/90 dark:hover:text-violet-200"
+              className="inline-flex items-center gap-1 text-xs font-semibold uppercase tracking-wider text-violet-200 transition hover:text-white"
             >
               ← Schedule
             </Link>
             <div className="flex flex-wrap gap-2">
-              <span className="rounded-full border border-slate-300/90 bg-white px-3 py-1 text-[11px] font-medium text-slate-700 dark:border-white/10 dark:bg-white/5 dark:text-zinc-300">
+              <span className="badge b-purple">
                 Lesson {lesson.lessonNumber}
               </span>
-              <span className="rounded-full border border-slate-300/90 bg-white px-3 py-1 text-[11px] font-medium text-slate-700 dark:border-white/10 dark:bg-white/5 dark:text-zinc-300">
+              <span className="badge b-blue">
                 {lesson.instrument}
               </span>
-              <span className="rounded-full border border-violet-400/40 bg-violet-100 px-3 py-1 text-[11px] font-medium text-violet-700 dark:border-violet-500/30 dark:bg-violet-500/15 dark:text-violet-200">
+              <span className="badge b-gold">
                 {programLabel}
               </span>
-              <span className="rounded-full border border-slate-300/90 bg-white px-3 py-1 text-[11px] font-medium text-slate-500 dark:border-white/10 dark:bg-white/5 dark:text-zinc-400">
+              <span className="badge b-cyan">
                 {lesson.scheduledDate}
               </span>
             </div>
-            <h1 className="max-w-3xl text-3xl font-semibold leading-tight tracking-tight text-slate-900 dark:text-white md:text-4xl lg:text-5xl">
+            <h1>
               {lesson.title}
             </h1>
             {student ? (
-              <p className="text-sm font-medium text-slate-500 dark:text-zinc-400">{student.displayName}</p>
+              <p>{student.displayName}</p>
             ) : null}
             {lesson.notes ? (
-              <p className="max-w-2xl text-sm leading-relaxed text-slate-500 dark:text-zinc-400 md:text-base">{lesson.notes}</p>
+              <p>{lesson.notes}</p>
             ) : null}
           </div>
         </header>

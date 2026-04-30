@@ -6,11 +6,13 @@ import { useEffect, useMemo, useState } from "react";
 import { ActivityFeed } from "@/components/parent/ActivityFeed";
 import { VideoCard } from "@/components/VideoCard";
 import { CadenzaMessageBoard } from "@/components/messaging/CadenzaMessageBoard";
+import { GamifiedRewardTrack } from "@/components/gamification/GamifiedRewardTrack";
 import { MOCK_DEMO_PASSWORD } from "@/lib/auth/constants";
 import { getAccountDetailsForParent } from "@/lib/auth/mock-auth-store";
 import { useAuth } from "@/lib/auth/auth-context";
 import { useRepository } from "@/lib/useRepository";
 import { useRotatingHeroHeadline } from "@/hooks/useRotatingHeroHeadline";
+import { useCadenzaTheme } from "@/hooks/useCadenzaTheme";
 
 type ParentPageId = "dashboard" | "family" | "videos";
 
@@ -66,7 +68,7 @@ export default function ParentPage() {
   const pathname = usePathname();
   const { session, ready, addChild, resetChildPassword } = useAuth();
   const { repository, refresh, version } = useRepository();
-  const [theme, setTheme] = useState<"dark" | "light">("dark");
+  const { theme, toggleTheme } = useCadenzaTheme();
   const [page, setPage] = useState<ParentPageId>("dashboard");
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [parentCrmId, setParentCrmId] = useState("parent-jordan");
@@ -188,6 +190,11 @@ export default function ParentPage() {
               <div className="su-role">{session?.kind === "parent" ? session.email : effectiveParentCrmId}</div>
             </div>
           </div>
+          <button className="theme-toggle menu-theme-toggle" onClick={toggleTheme} type="button">
+            <span className="toggle-icon">{theme === "dark" ? "Moon" : "Sun"}</span>
+            <span className="toggle-track"><span className="toggle-knob" /></span>
+            <span className="toggle-lbl">{theme === "dark" ? "Dark" : "Light"}</span>
+          </button>
         </div>
       </aside>
 
@@ -201,16 +208,13 @@ export default function ParentPage() {
           <div className="page-title">{pageTitle[page]}</div>
           <div className="topbar-right">
             <div className="xp-pill">Household · {children.length} students</div>
-            <button className="theme-toggle" onClick={() => setTheme(theme === "dark" ? "light" : "dark")} type="button">
+            <button className="theme-toggle" onClick={toggleTheme} type="button">
               <span className="toggle-icon">{theme === "dark" ? "Moon" : "Sun"}</span>
               <span className="toggle-track"><span className="toggle-knob" /></span>
               <span className="toggle-lbl">{theme === "dark" ? "Dark" : "Light"}</span>
             </button>
           </div>
         </div>
-
-        <CadenzaMessageBoard viewerRole="parent" />
-
         <div className="content">
           {page === "dashboard" ? (
             <>
@@ -240,6 +244,23 @@ export default function ParentPage() {
                   </label>
                 )}
               </section>
+
+              <CadenzaMessageBoard viewerRole="parent" />
+
+              <GamifiedRewardTrack
+                eyebrow="Family rewards"
+                title="Household progress league"
+                subtitle="Each student adds practice, listening, videos, and lesson activity to the family path."
+                pointsLabel="Family XP"
+                pointsValue={`${parentActivity.length * 125 + videos.length * 90}`}
+                progress={Math.min(100, Math.round(((videos.length * 18 + parentActivity.length * 9) % 100)))}
+                steps={[
+                  { label: "Roster", value: `${children.length}`, tone: "purple", unlocked: children.length > 0 },
+                  { label: "Videos", value: `${videos.length}`, tone: "cyan", unlocked: videos.length > 0 },
+                  { label: "Activity", value: `${parentActivity.length}`, tone: "gold", unlocked: parentActivity.length > 0 },
+                  { label: "Review", value: "Next", tone: "green", unlocked: parentActivity.length >= 3 },
+                ]}
+              />
 
               <section className="grid4">
                 <Metric label="Students" value={`${children.length}`} sub="In household" tone="purple" />

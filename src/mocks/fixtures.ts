@@ -22,6 +22,7 @@ export const MOCK_STUDENTS: StudentProfile[] = [
     primaryInstructorId: "instr-morgan",
     parentCrmId: "parent-jordan",
     enrolledPrograms: ["lessons", "bands"],
+    ageBand: "13to18",
   },
   {
     crmId: "crm-sam",
@@ -29,6 +30,7 @@ export const MOCK_STUDENTS: StudentProfile[] = [
     primaryInstructorId: "instr-morgan",
     parentCrmId: "parent-kim",
     enrolledPrograms: ["lessons"],
+    ageBand: "under10",
   },
 ];
 

@@ -17,6 +17,7 @@ export function writeStoredTheme(theme: UiTheme) {
   if (typeof window === "undefined") return;
   try {
     window.localStorage.setItem(THEME_STORAGE_KEY, theme);
+    window.dispatchEvent(new CustomEvent("rs-ui-theme-change", { detail: theme }));
   } catch {
     /* ignore */
   }

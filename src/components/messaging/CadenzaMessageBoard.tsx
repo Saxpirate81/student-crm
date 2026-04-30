@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import type { AnimationEvent } from "react";
-import { useCallback, useEffect, useLayoutEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { CadenzaRichTextEditor } from "@/components/messaging/CadenzaRichTextEditor";
 import {
   MESSAGE_BOARD_EVENT,
@@ -10,11 +10,11 @@ import {
   formatMessageTimestampUtc,
   loadMessages,
   loadReadIds,
-  markAllRead,
   markMessageRead,
   saveMessages,
   type MessageAudience,
   type MessageImageLayout,
+  type MessageSource,
   type StudioMessage,
 } from "@/lib/messaging/message-board-store";
 
@@ -35,6 +35,18 @@ function messageVisible(message: StudioMessage, role: ViewerRole) {
 
 type BoardPhase = "open" | "flash" | "collapsed";
 
+function messageSource(message: StudioMessage): MessageSource {
+  return message.source ?? (message.audience === "internal" ? "internal" : "school");
+}
+
+function sourceLabel(source: MessageSource) {
+  if (source === "school") return "School";
+  if (source === "instructor") return "Instructor";
+  if (source === "app") return "App";
+  if (source === "external") return "External";
+  return "Internal";
+}
+
 export function CadenzaMessageBoard({ viewerRole }: Props) {
   const isAdmin = viewerRole === "admin";
   const isFamilyViewer = viewerRole === "student" || viewerRole === "parent";
@@ -42,6 +54,7 @@ export function CadenzaMessageBoard({ viewerRole }: Props) {
   const [readIds, setReadIds] = useState<string[]>([]);
   const [composerOpen, setComposerOpen] = useState(false);
   const [boardPhase, setBoardPhase] = useState<BoardPhase>("open");
+  const [expandedIds, setExpandedIds] = useState<string[]>([]);
 
   const refresh = useCallback(() => {
     setMessages(loadMessages());
@@ -81,33 +94,12 @@ export function CadenzaMessageBoard({ viewerRole }: Props) {
   }, [boardPhase, unreadIds.length]);
 
   const preview = useMemo(() => {
+    const read = new Set(readIds);
     return [...visibleMessages]
+      .filter((message) => !read.has(message.id))
       .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-      .slice(0, 3);
-  }, [visibleMessages]);
-
-  useLayoutEffect(() => {
-    if (!isFamilyViewer) return;
-    if (boardPhase !== "open") return;
-    if (preview.length === 0) return;
-    if (unreadIds.length > 0) return;
-    setBoardPhase("collapsed");
-  }, [isFamilyViewer, boardPhase, preview.length, unreadIds.length]);
-
-  const markVisibleRead = () => {
-    if (!unreadIds.length) return;
-    try {
-      markAllRead(unreadIds);
-      refresh();
-    } catch {
-      return;
-    }
-    if (isFamilyViewer) {
-      setBoardPhase("collapsed");
-      return;
-    }
-    setBoardPhase("flash");
-  };
+      .slice(0, 4);
+  }, [readIds, visibleMessages]);
 
   const markOneRead = (id: string) => {
     try {
@@ -213,53 +205,44 @@ export function CadenzaMessageBoard({ viewerRole }: Props) {
         <div>
           <p className="mb-kicker">Announcements</p>
           <div className="mb-title-row">
-            <h2 className="mb-title">Studio messages</h2>
-            {unreadIds.length ? <span className="nav-badge">{unreadIds.length}</span> : null}
+            <span className="mb-title-left">
+              <h2 className="mb-title">Studio messages</h2>
+              {unreadIds.length ? <span className="nav-badge">{unreadIds.length}</span> : null}
+            </span>
+            <span className="mb-actions">
+              <Link className="btn btn-ghost" href={`/messages/archive?from=${viewerRole}`}>
+                Past messages
+              </Link>
+              {isAdmin ? (
+                <button className="btn btn-primary" type="button" onClick={() => setComposerOpen(true)}>
+                  Add message
+                </button>
+              ) : null}
+            </span>
           </div>
-          <p className="mb-sub">
-            {viewerRole === "student" || viewerRole === "parent"
-              ? "Updates for students and families."
-              : "Internal + external updates for your role."}
-          </p>
-          {!isFamilyViewer && preview.length > 0 && unreadIds.length > 0 ? (
-            <p className="mb-sub mb-sub-muted">Use Mark all read (top right) or Mark read on each card.</p>
-          ) : null}
-        </div>
-        <div className="mb-actions">
-          <Link className="btn btn-ghost" href={`/messages/archive?from=${viewerRole}`}>
-            Past messages
-          </Link>
-          {unreadIds.length ? (
-            <button className="btn btn-secondary" type="button" onClick={() => void markVisibleRead()}>
-              Mark all read
-            </button>
-          ) : null}
-          {isAdmin ? (
-            <button className="btn btn-primary" type="button" onClick={() => setComposerOpen(true)}>
-              Add message
-            </button>
-          ) : null}
         </div>
       </div>
 
       {preview.length ? (
-        <div className="mb-grid">
+        <div className="mb-stack">
           {preview.map((message) => {
             const unread = !readIds.includes(message.id);
+            const source = messageSource(message);
+            const expanded = expandedIds.includes(message.id);
+            const plainBody = message.bodyHtml.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
+            const canExpand = plainBody.length > 115 || message.bodyHtml.includes("</p><p");
             return (
-              <article key={message.id} className={`mb-card ${unread ? "mb-unread" : ""}`}>
+              <article key={message.id} className={`mb-card mb-source-${source} ${expanded ? "mb-expanded" : ""} ${unread ? "mb-unread" : ""}`}>
                 <div className="mb-card-top">
-                  <span className={`mb-pill ${message.audience === "internal" ? "mb-pill-int" : "mb-pill-ext"}`}>
-                    {message.audience === "internal" ? "Internal" : "External"}
+                  <span className={`mb-pill mb-pill-${source}`}>
+                    {sourceLabel(source)}
                   </span>
-                  {unread ? (
-                    <span className="mb-card-top-actions">
-                      <span className="mb-dot" aria-label="Unread" />
-                      <button type="button" className="mb-mark-one" onClick={() => void markOneRead(message.id)}>
-                        Mark read
-                      </button>
-                    </span>
-                  ) : null}
+                  <span className="mb-card-top-actions">
+                    {unread ? <span className="mb-dot" aria-label="Unread" /> : null}
+                    <button type="button" className="mb-mark-one" onClick={() => void markOneRead(message.id)}>
+                      Mark read
+                    </button>
+                  </span>
                 </div>
                 {message.imageDataUrl && message.imageLayout === "header" ? (
                   // eslint-disable-next-line @next/next/no-img-element
@@ -272,7 +255,22 @@ export function CadenzaMessageBoard({ viewerRole }: Props) {
                   ) : null}
                   <div className="mb-copy">
                     <h3>{message.title}</h3>
-                    <div className="mb-html" dangerouslySetInnerHTML={{ __html: message.bodyHtml }} />
+                    <div className={`mb-html ${expanded ? "expanded" : "clamped"}`} dangerouslySetInnerHTML={{ __html: message.bodyHtml }} />
+                    {canExpand ? (
+                      <button
+                        className="mb-expand"
+                        type="button"
+                        onClick={() =>
+                          setExpandedIds((current) =>
+                            current.includes(message.id)
+                              ? current.filter((id) => id !== message.id)
+                              : [...current, message.id],
+                          )
+                        }
+                      >
+                        {expanded ? "Show less" : "Read more"}
+                      </button>
+                    ) : null}
                     <p className="mb-meta">{formatMessageTimestampUtc(message.createdAt)}</p>
                   </div>
                 </div>
@@ -280,9 +278,7 @@ export function CadenzaMessageBoard({ viewerRole }: Props) {
             );
           })}
         </div>
-      ) : (
-        <div className="mb-empty">No messages yet for this view.</div>
-      )}
+      ) : null}
 
       {composerOpen ? (
         <MessageComposer
@@ -307,6 +303,7 @@ type ComposerProps = {
 function MessageComposer({ onClose, onPublish }: ComposerProps) {
   const [title, setTitle] = useState("");
   const [audience, setAudience] = useState<MessageAudience>("external");
+  const [source, setSource] = useState<MessageSource>("school");
   const [imageLayout, setImageLayout] = useState<MessageImageLayout>("header");
   const [imageDataUrl, setImageDataUrl] = useState<string | null>(null);
   const [bodyHtml, setBodyHtml] = useState("<p></p>");
@@ -336,6 +333,7 @@ function MessageComposer({ onClose, onPublish }: ComposerProps) {
       id: typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : `msg-${Date.now()}`,
       title: title.trim(),
       audience,
+      source,
       imageLayout,
       imageDataUrl,
       bodyHtml: bodyHtml.trim() ? bodyHtml : "<p></p>",
@@ -375,6 +373,16 @@ function MessageComposer({ onClose, onPublish }: ComposerProps) {
               <select value={audience} onChange={(event) => setAudience(event.target.value as MessageAudience)}>
                 <option value="internal">Internal (instructors, admin, producers)</option>
                 <option value="external">External (students & parents)</option>
+              </select>
+            </label>
+            <label className="field">
+              <span>Source</span>
+              <select value={source} onChange={(event) => setSource(event.target.value as MessageSource)}>
+                <option value="school">School</option>
+                <option value="instructor">Instructor</option>
+                <option value="app">App</option>
+                <option value="internal">Internal</option>
+                <option value="external">External</option>
               </select>
             </label>
             <label className="field">

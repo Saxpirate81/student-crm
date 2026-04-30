@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
+import { useCadenzaTheme } from "@/hooks/useCadenzaTheme";
 import { isShowcaseTextAllowed } from "@/lib/showcase-moderation";
 import { useRepository } from "@/lib/useRepository";
 
@@ -9,6 +10,7 @@ const EMOJIS = ["👏", "🎉", "🔥", "💜"];
 
 export default function StudentShowcasePage() {
   const { repository, refresh, version } = useRepository();
+  const { theme } = useCadenzaTheme();
   const [studentCrmId, setStudentCrmId] = useState("crm-alex");
   const [videoId, setVideoId] = useState("");
   const [caption, setCaption] = useState("");
@@ -57,7 +59,7 @@ export default function StudentShowcasePage() {
   };
 
   return (
-    <div className="cadenza-app" data-theme="dark">
+    <div className="cadenza-app" data-theme={theme}>
       <main className="c-main">
         <div className="topbar">
           <Link className="btn btn-sm" href="/student">

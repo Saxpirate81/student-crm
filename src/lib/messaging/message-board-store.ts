@@ -1,10 +1,12 @@
 export type MessageAudience = "internal" | "external";
+export type MessageSource = "internal" | "external" | "instructor" | "school" | "app";
 export type MessageImageLayout = "header" | "thumbnail";
 
 export type StudioMessage = {
   id: string;
   title: string;
   audience: MessageAudience;
+  source?: MessageSource;
   bodyHtml: string;
   imageDataUrl?: string | null;
   imageLayout: MessageImageLayout;
@@ -47,6 +49,7 @@ export function loadMessages(): StudioMessage[] {
       id: "msg-seed-internal",
       title: "Studio ops update",
       audience: "internal",
+      source: "internal",
       imageLayout: "thumbnail",
       imageDataUrl: null,
       createdAt: new Date().toISOString(),
@@ -57,6 +60,7 @@ export function loadMessages(): StudioMessage[] {
       id: "msg-seed-external",
       title: "Family communication",
       audience: "external",
+      source: "school",
       imageLayout: "header",
       imageDataUrl: null,
       createdAt: new Date().toISOString(),

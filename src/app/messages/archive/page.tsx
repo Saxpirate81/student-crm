@@ -44,7 +44,7 @@ export default function MessageArchivePage() {
   return (
     <Suspense
       fallback={
-        <div className="cadenza-app" data-theme="dark" style={{ inset: 0, position: "fixed", zIndex: 70 }}>
+        <div className="cadenza-app" data-theme="light" style={{ inset: 0, position: "fixed", zIndex: 70 }}>
           <div className="c-main" style={{ width: "100%" }}>
             <div className="topbar">
               <div className="page-title">Past messages</div>

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useMemo } from "react";
 import { VideoCompareView } from "@/components/video/VideoCompareView";
+import { useCadenzaTheme } from "@/hooks/useCadenzaTheme";
 import { useAuth } from "@/lib/auth/auth-context";
 import { useRepository } from "@/lib/useRepository";
 
@@ -11,6 +12,7 @@ function ParentCompareInner() {
   const searchParams = useSearchParams();
   const { session, ready } = useAuth();
   const { repository, version } = useRepository();
+  const { theme } = useCadenzaTheme();
 
   const children = useMemo(() => {
     void version;
@@ -29,7 +31,7 @@ function ParentCompareInner() {
   }, [children, crm, repository, version]);
 
   return (
-    <div className="cadenza-app" data-theme="dark">
+    <div className="cadenza-app" data-theme={theme}>
       <main className="c-main">
         <div className="topbar">
           <Link className="btn btn-sm" href="/parent">

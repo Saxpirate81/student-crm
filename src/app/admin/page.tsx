@@ -6,6 +6,7 @@ import { VideoCard } from "@/components/VideoCard";
 import { CadenzaMessageBoard } from "@/components/messaging/CadenzaMessageBoard";
 import { useRepository } from "@/lib/useRepository";
 import { useRotatingHeroHeadline } from "@/hooks/useRotatingHeroHeadline";
+import { useCadenzaTheme } from "@/hooks/useCadenzaTheme";
 
 const FALLBACK_VIDEO = "https://www.w3schools.com/html/mov_bbb.mp4";
 const FALLBACK_POSTER =
@@ -54,7 +55,7 @@ function StudioIcon({ icon, className = "" }: { icon: keyof typeof icons; classN
 export default function AdminPage() {
   const pathname = usePathname();
   const { repository, refresh } = useRepository();
-  const [theme, setTheme] = useState<"dark" | "light">("dark");
+  const { theme, toggleTheme } = useCadenzaTheme();
   const [page, setPage] = useState<AdminPageId>("dashboard");
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [studentCrmId, setStudentCrmId] = useState("crm-alex");
@@ -145,6 +146,11 @@ export default function AdminPage() {
               <div className="su-role">Mock command center</div>
             </div>
           </div>
+          <button className="theme-toggle menu-theme-toggle" onClick={toggleTheme} type="button">
+            <span className="toggle-icon">{theme === "dark" ? "Moon" : "Sun"}</span>
+            <span className="toggle-track"><span className="toggle-knob" /></span>
+            <span className="toggle-lbl">{theme === "dark" ? "Dark" : "Light"}</span>
+          </button>
         </div>
       </aside>
 
@@ -158,7 +164,7 @@ export default function AdminPage() {
           <div className="page-title">{pageTitle[page]}</div>
           <div className="topbar-right">
             <div className="xp-pill">{studentName} · {videos.length} videos</div>
-            <button className="theme-toggle" onClick={() => setTheme(theme === "dark" ? "light" : "dark")} type="button">
+            <button className="theme-toggle" onClick={toggleTheme} type="button">
               <span className="toggle-icon">{theme === "dark" ? "Moon" : "Sun"}</span>
               <span className="toggle-track"><span className="toggle-knob" /></span>
               <span className="toggle-lbl">{theme === "dark" ? "Dark" : "Light"}</span>
@@ -168,9 +174,6 @@ export default function AdminPage() {
             </button>
           </div>
         </div>
-
-        <CadenzaMessageBoard viewerRole="admin" />
-
         <div className="content">
           {page === "dashboard" ? (
             <>
@@ -191,6 +194,7 @@ export default function AdminPage() {
                   </select>
                 </label>
               </section>
+              <CadenzaMessageBoard viewerRole="admin" />
               <section className="grid4">
                 <Metric label="Visible" value={`${videos.length}`} sub="Current filter" tone="cyan" />
                 <Metric label="Active" value={`${activeVideos.length}`} sub="Not archived" tone="green" />

@@ -1,12 +1,7 @@
 "use client";
 
-import { useLayoutEffect, useState } from "react";
-import {
-  applyThemeToDocument,
-  readStoredTheme,
-  writeStoredTheme,
-  type UiTheme,
-} from "@/lib/theme-storage";
+import { useEffect, useState } from "react";
+import { useCadenzaTheme } from "@/hooks/useCadenzaTheme";
 
 type ThemeToggleProps = {
   /** Larger control for the student hero */
@@ -14,23 +9,11 @@ type ThemeToggleProps = {
 };
 
 export function ThemeToggle({ variant = "compact" }: ThemeToggleProps) {
-  const [theme, setTheme] = useState<UiTheme>("light");
+  const { theme, toggleTheme } = useCadenzaTheme();
   const [mounted, setMounted] = useState(false);
-
-  useLayoutEffect(() => {
-    const stored = readStoredTheme();
-    const initial = stored ?? "light";
-    setTheme(initial);
-    applyThemeToDocument(initial);
+  useEffect(() => {
     setMounted(true);
   }, []);
-
-  const toggle = () => {
-    const next: UiTheme = theme === "dark" ? "light" : "dark";
-    setTheme(next);
-    writeStoredTheme(next);
-    applyThemeToDocument(next);
-  };
 
   const label = theme === "dark" ? "Dark" : "Light";
   const isHero = variant === "hero";
@@ -38,7 +21,7 @@ export function ThemeToggle({ variant = "compact" }: ThemeToggleProps) {
   return (
     <button
       type="button"
-      onClick={toggle}
+      onClick={toggleTheme}
       disabled={!mounted}
       className={`inline-flex items-center gap-2 rounded-full border font-semibold transition ${
         isHero
