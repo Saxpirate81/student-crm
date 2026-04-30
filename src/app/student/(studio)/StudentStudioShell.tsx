@@ -460,15 +460,6 @@ export function StudentStudioLayout({ children }: { children: ReactNode }) {
         weekPractice,
         weekTotal: gamifiedPracticeMinutes,
         listeningTracks,
-        newsUpdates,
-        unreadNewsCount,
-        onOpenListening: () => openStudioPage("listening"),
-        onMarkNewsRead: () => {
-          if (!student) return;
-          markStudentNewsRead(student.crmId);
-          setListeningState(loadListeningState());
-          setListeningVersion((value) => value + 1);
-        },
       },
       practicePage: {
         assignments,
@@ -614,7 +605,6 @@ export function StudentStudioLayout({ children }: { children: ReactNode }) {
       todayPracticePlan,
       todayHeatIndex,
       totalXp,
-      unreadNewsCount,
       videos,
       weekPractice,
       gamifiedPracticeMinutes,
@@ -790,10 +780,6 @@ export function StudentStudioDashboard(props: {
   weekPractice: number[];
   weekTotal: number;
   listeningTracks: ListeningTrack[];
-  newsUpdates: NewsUpdate[];
-  unreadNewsCount: number;
-  onOpenListening: () => void;
-  onMarkNewsRead: () => void;
 }) {
   const {
     activeProgram,
@@ -820,10 +806,6 @@ export function StudentStudioDashboard(props: {
     weekPractice,
     weekTotal,
     listeningTracks,
-    newsUpdates,
-    unreadNewsCount,
-    onOpenListening,
-    onMarkNewsRead,
   } = props;
 
   const greetingHeadline = useRotatingHeroHeadline("student", firstName);
@@ -954,42 +936,6 @@ export function StudentStudioDashboard(props: {
         <Metric label="XP" value={totalXp.toLocaleString()} sub={`Level ${level}`} tone="purple" />
         <Metric label="Tasks" value={`${openAssignments}`} sub="Open" tone={openAssignments ? "red" : "green"} />
         <Metric label="Week" value={`${weekTotal}m`} sub="Goal: 210" tone="cyan" />
-      </section>
-
-      <section className="grid2">
-        <div className="card message-board">
-          <div className="card-header">
-            <div>
-              <div className="card-title">Message board</div>
-              <div className="section-sub">{unreadNewsCount} new updates from instructor, school, and app.</div>
-            </div>
-            <button className="btn btn-sm" type="button" onClick={onMarkNewsRead}>Mark read</button>
-          </div>
-          {newsUpdates.slice(0, 3).map((item) => (
-            <div className={`news-row ${item.read ? "" : "unread"}`} key={item.id}>
-              <span className={`badge ${item.source === "instructor" ? "b-purple" : item.source === "school" ? "b-gold" : "b-cyan"}`}>{item.source}</span>
-              <div>
-                <strong>{item.title}</strong>
-                <p>{item.body}</p>
-              </div>
-            </div>
-          ))}
-        </div>
-        <div className="card">
-          <div className="card-header">
-            <div>
-              <div className="card-title">Listening</div>
-              <div className="section-sub">YouTube playlist time counts toward listening rewards.</div>
-            </div>
-            <button className="btn btn-sm" type="button" onClick={onOpenListening}>Open</button>
-          </div>
-          <Metric
-            label="Total listening"
-            value={`${Math.round(listeningTracks.reduce((sum, track) => sum + track.listenedSeconds, 0) / 60)}m`}
-            sub={`${listeningTracks.length} tracks`}
-            tone="cyan"
-          />
-        </div>
       </section>
 
       <section className="card">

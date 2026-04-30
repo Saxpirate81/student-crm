@@ -251,6 +251,40 @@ export default function InstructorPage() {
   }, []);
 
   const listeningTracks = listeningState.tracks.filter((track) => track.studentCrmId === studentCrmId);
+  const rosterCrmIds = new Set(roster.map((student) => student.crmId));
+  const rosterLessonCount = roster.reduce((sum, student) => sum + repository.listLessonsForStudent(student.crmId).length, 0);
+  const rosterVideoCount = roster.reduce((sum, student) => sum + repository.listVideosForStudent(student.crmId).length, 0);
+  const rosterExerciseCount = roster.reduce((sum, student) => sum + repository.listExercisesForStudent(student.crmId).length, 0);
+  const rosterListeningTracks = listeningState.tracks.filter((track) => rosterCrmIds.has(track.studentCrmId));
+  const rosterListeningMinutes = Math.round(rosterListeningTracks.reduce((sum, track) => sum + track.listenedSeconds, 0) / 60);
+  const rosterPracticeMinutes = roster.reduce((sum, student) => {
+    const storedStudentMinutes = student.crmId === "crm-alex" ? Math.round(storedPracticeSeconds / 60) : 0;
+    const repositoryMinutes = Math.round(
+      Object.values(repository.getDailyPracticeMinutesMap(student.crmId)).reduce((total, minutes) => total + minutes, 0),
+    );
+    return sum + Math.max(storedStudentMinutes, repositoryMinutes);
+  }, 0);
+  const rosterPendingReviewCount = roster.reduce(
+    (sum, student) => sum + listPendingPracticeSubmissions(student.crmId).length,
+    0,
+  );
+  const coachScore =
+    roster.length * 100 +
+    rosterPracticeMinutes * 2 +
+    rosterListeningMinutes +
+    rosterLessonCount * 12 +
+    rosterVideoCount * 25 +
+    rosterExerciseCount * 18 +
+    rosterPendingReviewCount * 35;
+  const studioMomentumProgress = Math.min(
+    100,
+    Math.round(
+      Math.min(rosterPracticeMinutes / Math.max(roster.length * 120, 1), 1) * 42 +
+      Math.min(rosterListeningMinutes / Math.max(roster.length * 45, 1), 1) * 24 +
+      Math.min(rosterLessonCount / Math.max(roster.length * 4, 1), 1) * 18 +
+      Math.min((rosterVideoCount + rosterExerciseCount) / Math.max(roster.length * 4, 1), 1) * 16,
+    ),
+  );
   const selectedPracticeMinutes = Math.round(storedPracticeSeconds / 60);
   const selectedListeningMinutes = Math.round(listeningTracks.reduce((sum, track) => sum + track.listenedSeconds, 0) / 60);
   useEffect(() => {
@@ -433,11 +467,26 @@ export default function InstructorPage() {
 
               <CadenzaMessageBoard viewerRole="instructor" />
 
+              <GamifiedRewardTrack
+                eyebrow="Studio momentum"
+                title="Studio-wide weekly mission"
+                subtitle="Coach score now reflects your whole roster: students, practice, listening, lessons, media, and exercises."
+                pointsLabel="Coach score"
+                pointsValue={coachScore.toLocaleString()}
+                progress={studioMomentumProgress}
+                steps={[
+                  { label: "Students", value: `${roster.length}`, tone: "purple", unlocked: roster.length > 0 },
+                  { label: "Practice", value: `${rosterPracticeMinutes}m`, tone: "gold", unlocked: rosterPracticeMinutes > 0 },
+                  { label: "Listen", value: `${rosterListeningMinutes}m`, tone: "cyan", unlocked: rosterListeningMinutes > 0 },
+                  { label: "Output", value: `${rosterVideoCount + rosterExerciseCount}`, tone: "green", unlocked: rosterVideoCount + rosterExerciseCount > 0 },
+                ]}
+              />
+
               <section className="grid4">
                 <Metric label="Students" value={`${roster.length}`} sub="Active" tone="purple" />
-                <Metric label="Lessons" value={`${lessons.length}`} sub={selectedStudent?.displayName ?? "Selected"} tone="gold" />
-            <Metric label="Videos" value={`${activeVideos.length}`} sub="Current library" tone="cyan" />
-            <Metric label="Exercises" value={`${exercises.length}`} sub="Notation" tone="green" />
+                <Metric label="Lessons" value={`${rosterLessonCount}`} sub="Across roster" tone="gold" />
+                <Metric label="Videos" value={`${rosterVideoCount}`} sub="Current libraries" tone="cyan" />
+                <Metric label="Exercises" value={`${rosterExerciseCount}`} sub="Notation" tone="green" />
               </section>
             </>
           ) : (
@@ -905,7 +954,6 @@ function InstructorDashboard({
   setPage: (page: InstructorPageId) => void;
   setStudentCrmId: (id: string) => void;
 }) {
-  const studioMomentum = Math.min(100, Math.round(((practiceMinutes / 210) * 70) + ((listeningMinutes / 90) * 30)));
   const rosterLeaders = roster.slice(0, 4).map((student, index) => ({
     ...student,
     minutes: student.crmId === "crm-alex" ? practiceMinutes : [132, 86, 54, 38][index] ?? 24,
@@ -913,21 +961,6 @@ function InstructorDashboard({
 
   return (
     <>
-      <GamifiedRewardTrack
-        eyebrow="Studio momentum"
-        title={`${selectedStudentName}'s weekly mission`}
-        subtitle="Practice minutes, listening time, lesson media, and review submissions now move this local testing track."
-        pointsLabel="Coach score"
-        pointsValue={`${practiceMinutes * 2 + listeningMinutes + videos.length * 25}`}
-        progress={studioMomentum}
-        steps={[
-          { label: "Practice", value: `${practiceMinutes}m`, tone: "gold", unlocked: practiceMinutes > 0 },
-          { label: "Listen", value: `${listeningMinutes}m`, tone: "cyan", unlocked: listeningMinutes > 0 },
-          { label: "Media", value: `${videos.length}`, tone: "purple", unlocked: videos.length > 0 },
-          { label: "Review", value: `${pendingPracticeReviews.length}`, tone: "green", unlocked: pendingPracticeReviews.length === 0 },
-        ]}
-      />
-
       <section className="instructor-league-card">
         <div className="practice-league-glow" aria-hidden />
         <div className="practice-league-head">

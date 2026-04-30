@@ -529,14 +529,19 @@ body {
 }
 
 .message-board {
-  background:
-    radial-gradient(circle at 12% 18%, rgba(124, 58, 237, 0.08), transparent 34%),
-    linear-gradient(135deg, rgba(15, 23, 42, 0.035), transparent 42%),
-    var(--bg2);
-  border-bottom: 1px solid var(--border);
+  background: transparent;
+  border: 0;
   flex-shrink: 0;
+  margin-bottom: 12px;
   overflow: visible;
-  padding: 14px 18px 28px;
+  padding: 0 0 12px;
+}
+
+.card.message-board {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  margin-bottom: 12px;
+  padding: 14px;
 }
 
 .mb-caught-up-flash {
@@ -682,9 +687,44 @@ body {
   display: inline-flex;
   gap: 8px;
   min-width: 0;
+  flex-wrap: wrap;
 }
 .mb-title { font-size: 15px; font-weight: 800; letter-spacing: -0.2px; margin: 0; }
 .mb-sub { color: var(--txt3); font-size: 12px; line-height: 1.45; margin: 4px 0 0; max-width: 720px; }
+
+.mb-caught-up-pill {
+  align-items: center;
+  background:
+    radial-gradient(circle at 18% 24%, rgba(16, 185, 129, 0.22), transparent 32%),
+    linear-gradient(135deg, rgba(124, 58, 237, 0.12), rgba(6, 182, 212, 0.12));
+  border: 1px solid rgba(16, 185, 129, 0.28);
+  border-radius: 999px;
+  color: var(--green);
+  display: inline-flex;
+  font-size: 10px;
+  font-weight: 900;
+  gap: 6px;
+  letter-spacing: 0.03em;
+  line-height: 1;
+  padding: 5px 9px;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.mb-caught-up-spark {
+  animation: caughtUpSpark 2.6s ease-in-out infinite;
+  background: var(--green);
+  border-radius: 50%;
+  box-shadow: 0 0 12px rgba(16, 185, 129, 0.65);
+  display: inline-block;
+  height: 7px;
+  width: 7px;
+}
+
+@keyframes caughtUpSpark {
+  0%, 100% { opacity: 0.65; transform: scale(1); }
+  50% { opacity: 1; transform: scale(1.35); }
+}
 
 .mb-sub-muted {
   color: var(--txt3);
@@ -1602,7 +1642,8 @@ body {
 }
 
 @media (max-width: 768px) {
-  .message-board { padding: 10px 12px 24px; }
+  .message-board { padding: 0 0 12px; }
+  .card.message-board { padding: 12px; }
   .mb-head { align-items: stretch; flex-direction: column; }
   .mb-actions { justify-content: flex-start; }
   .mb-grid { grid-template-columns: 1fr; }
@@ -2575,7 +2616,6 @@ input[type="range"]::-webkit-slider-thumb {
 .instructor-context span { color: var(--txt3); display: block; font-size: 11px; margin-top: 3px; }
 
 /* Listening */
-.message-board,
 .listening-add-card { background: linear-gradient(135deg, rgba(245, 158, 11, 0.06), transparent 50%), var(--bg2); }
 .listening-hero {
   background: linear-gradient(135deg, rgba(16, 185, 129, 0.1), transparent 42%), linear-gradient(135deg, #111318, #101827 62%, #0a0b0f);

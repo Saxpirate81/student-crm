@@ -35,6 +35,16 @@ function messageVisible(message: StudioMessage, role: ViewerRole) {
 
 type BoardPhase = "open" | "flash" | "collapsed";
 
+const caughtUpPhrases = [
+  "All caught up · clear deck",
+  "All caught up · studio is quiet",
+  "All caught up · ready for the next win",
+  "All caught up · clean slate",
+  "All caught up · nothing waiting",
+  "All caught up · nice rhythm",
+  "All caught up · inbox in tune",
+];
+
 function messageSource(message: StudioMessage): MessageSource {
   return message.source ?? (message.audience === "internal" ? "internal" : "school");
 }
@@ -55,6 +65,7 @@ export function CadenzaMessageBoard({ viewerRole }: Props) {
   const [composerOpen, setComposerOpen] = useState(false);
   const [boardPhase, setBoardPhase] = useState<BoardPhase>("open");
   const [expandedIds, setExpandedIds] = useState<string[]>([]);
+  const [caughtUpPhrase, setCaughtUpPhrase] = useState(caughtUpPhrases[0]);
 
   const refresh = useCallback(() => {
     setMessages(loadMessages());
@@ -76,6 +87,13 @@ export function CadenzaMessageBoard({ viewerRole }: Props) {
       window.removeEventListener(MESSAGE_BOARD_EVENT, onLocal);
     };
   }, [refresh]);
+
+  useEffect(() => {
+    const today = new Date();
+    const dayKey = Math.floor(Date.UTC(today.getFullYear(), today.getMonth(), today.getDate()) / 86400000);
+    const roleOffset = viewerRole.length;
+    setCaughtUpPhrase(caughtUpPhrases[(dayKey + roleOffset) % caughtUpPhrases.length]);
+  }, [viewerRole]);
 
   const visibleMessages = useMemo(
     () => messages.filter((message) => messageVisible(message, viewerRole)),
@@ -208,6 +226,12 @@ export function CadenzaMessageBoard({ viewerRole }: Props) {
             <span className="mb-title-left">
               <h2 className="mb-title">Studio messages</h2>
               {unreadIds.length ? <span className="nav-badge">{unreadIds.length}</span> : null}
+              {!preview.length ? (
+                <span className="mb-caught-up-pill" role="status" aria-live="polite">
+                  <span className="mb-caught-up-spark" aria-hidden />
+                  {caughtUpPhrase}
+                </span>
+              ) : null}
             </span>
             <span className="mb-actions">
               <Link className="btn btn-ghost" href={`/messages/archive?from=${viewerRole}`}>
