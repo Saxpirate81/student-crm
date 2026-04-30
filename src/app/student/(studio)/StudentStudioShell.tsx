@@ -36,6 +36,11 @@ import { useRotatingHeroHeadline } from "@/hooks/useRotatingHeroHeadline";
 import { PracticeGoalRing } from "@/components/student/PracticeGoalRing";
 import { AddVideoModal, type VideoAssignmentOption } from "@/components/video/AddVideoModal";
 import { GamifiedRewardTrack } from "@/components/gamification/GamifiedRewardTrack";
+import {
+  addPracticeSeconds,
+  getPracticeTotalSeconds,
+  PRACTICE_TOTAL_UPDATED_EVENT,
+} from "@/lib/practice-total";
 
 export type StudioPage = "dashboard" | "practice" | "listening" | "achievements" | "progress";
 
@@ -253,11 +258,12 @@ export function StudentStudioLayout({ children }: { children: ReactNode }) {
     [router],
   );
   const { session, ready } = useAuth();
-  const { repository, version } = useRepository();
+  const { repository, refresh, version } = useRepository();
   const { theme, toggleTheme } = useCadenzaTheme();
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [studentCrmId, setStudentCrmId] = useState("crm-alex");
   const [practiceSeconds, setPracticeSeconds] = useState(0);
+  const [storedPracticeSeconds, setStoredPracticeSeconds] = useState(0);
   const [micRetryNonce, setMicRetryNonce] = useState(0);
   const [completedAssignments, setCompletedAssignments] = useState<Record<string, boolean>>({});
   const [listeningVersion, setListeningVersion] = useState(0);
@@ -328,6 +334,16 @@ export function StudentStudioLayout({ children }: { children: ReactNode }) {
   useEffect(() => {
     setListeningState(loadListeningState());
   }, [listeningVersion]);
+  useEffect(() => {
+    const syncPracticeTotal = () => setStoredPracticeSeconds(getPracticeTotalSeconds(MOCK_USER_KEYS.student));
+    syncPracticeTotal();
+    window.addEventListener(PRACTICE_TOTAL_UPDATED_EVENT, syncPracticeTotal);
+    window.addEventListener("storage", syncPracticeTotal);
+    return () => {
+      window.removeEventListener(PRACTICE_TOTAL_UPDATED_EVENT, syncPracticeTotal);
+      window.removeEventListener("storage", syncPracticeTotal);
+    };
+  }, []);
 
   const listeningTracks = listeningState.tracks.filter((track) => track.studentCrmId === (student?.crmId ?? studentCrmId));
   const newsUpdates = listeningState.news.filter((item) => item.studentCrmId === (student?.crmId ?? studentCrmId));
@@ -344,8 +360,7 @@ export function StudentStudioLayout({ children }: { children: ReactNode }) {
     title: assignment.title,
   }));
   const openAssignments = assignments.filter((assignment) => !assignment.done);
-  const totalXp = 2450 + videos.length * 120 + exercises.length * 75 + assignments.filter((item) => item.done).length * 40;
-  const level = Math.max(1, Math.floor(totalXp / 650));
+  const baseXp = 2450 + videos.length * 120 + exercises.length * 75 + assignments.filter((item) => item.done).length * 40;
   const dailyMap = student ? repository.getDailyPracticeMinutesMap(student.crmId) : {};
   const weekPractice = weekMinutesMonToSun(dailyMap);
   const weekTotal = weekPractice.reduce((sum, value) => sum + value, 0);
@@ -361,9 +376,21 @@ export function StudentStudioLayout({ children }: { children: ReactNode }) {
   const micPractice = useMicPracticeDetector({
     enabled: studioNav === "practice",
     retryNonce: micRetryNonce,
-    onSegmentComplete: (durationSec) => setPracticeSeconds((value) => value + durationSec),
+    onSegmentComplete: (durationSec) => {
+      setPracticeSeconds((value) => value + durationSec);
+      addPracticeSeconds(MOCK_USER_KEYS.student, durationSec);
+      if (student) {
+        repository.recordDailyPracticeMinutes(student.crmId, durationSec / 60);
+        refresh();
+      }
+    },
   });
   const livePracticeSeconds = practiceSeconds + micPractice.activeSeconds;
+  const localPracticeMinutes = Math.round((storedPracticeSeconds + livePracticeSeconds) / 60);
+  const gamifiedPracticeMinutes = Math.max(weekTotal, localPracticeMinutes);
+  const localListeningMinutes = Math.round(listeningTracks.reduce((sum, track) => sum + track.listenedSeconds, 0) / 60);
+  const totalXp = baseXp + gamifiedPracticeMinutes * 2 + localListeningMinutes;
+  const level = Math.max(1, Math.floor(totalXp / 650));
   const practiceRunning = studioNav === "practice" && micPractice.activeSeconds > 0;
   const latestLesson = allLessons[0];
   const studentCopy = getStudentCopyProfile(student);
@@ -387,7 +414,7 @@ export function StudentStudioLayout({ children }: { children: ReactNode }) {
   }, []);
 
   const practiceRanking = student
-    ? practiceRankingFor(student, repository.listStudents(), weekTotal)
+    ? practiceRankingFor(student, repository.listStudents(), gamifiedPracticeMinutes)
     : null;
 
   const profileName = student?.displayName ?? "Student";
@@ -431,7 +458,7 @@ export function StudentStudioLayout({ children }: { children: ReactNode }) {
         totalXp,
         videos,
         weekPractice,
-        weekTotal,
+        weekTotal: gamifiedPracticeMinutes,
         listeningTracks,
         newsUpdates,
         unreadNewsCount,
@@ -590,7 +617,7 @@ export function StudentStudioLayout({ children }: { children: ReactNode }) {
       unreadNewsCount,
       videos,
       weekPractice,
-      weekTotal,
+      gamifiedPracticeMinutes,
     ],
   );
 
@@ -656,6 +683,11 @@ export function StudentStudioLayout({ children }: { children: ReactNode }) {
           ))}
         </nav>
         <div className="sidebar-user">
+          <button className="theme-toggle menu-theme-toggle" onClick={toggleTheme} type="button">
+            <span className="toggle-icon">{theme === "dark" ? "Moon" : "Sun"}</span>
+            <span className="toggle-track"><span className="toggle-knob" /></span>
+            <span className="toggle-lbl">{theme === "dark" ? "Dark" : "Light"}</span>
+          </button>
           <div className="su-inner">
             <div className="su-avatar">{initials(profileName)}</div>
             <div className="min-w-0">
@@ -663,11 +695,6 @@ export function StudentStudioLayout({ children }: { children: ReactNode }) {
               <div className="su-role">Lv.{level} · {programs.map((program) => programLabels[program]).join(", ")}</div>
             </div>
           </div>
-          <button className="theme-toggle menu-theme-toggle" onClick={toggleTheme} type="button">
-            <span className="toggle-icon">{theme === "dark" ? "Moon" : "Sun"}</span>
-            <span className="toggle-track"><span className="toggle-knob" /></span>
-            <span className="toggle-lbl">{theme === "dark" ? "Dark" : "Light"}</span>
-          </button>
         </div>
       </aside>
 

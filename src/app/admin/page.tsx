@@ -139,6 +139,11 @@ export default function AdminPage() {
           ))}
         </nav>
         <div className="sidebar-user">
+          <button className="theme-toggle menu-theme-toggle" onClick={toggleTheme} type="button">
+            <span className="toggle-icon">{theme === "dark" ? "Moon" : "Sun"}</span>
+            <span className="toggle-track"><span className="toggle-knob" /></span>
+            <span className="toggle-lbl">{theme === "dark" ? "Dark" : "Light"}</span>
+          </button>
           <div className="su-inner">
             <div className="su-avatar">AD</div>
             <div className="min-w-0">
@@ -146,11 +151,6 @@ export default function AdminPage() {
               <div className="su-role">Mock command center</div>
             </div>
           </div>
-          <button className="theme-toggle menu-theme-toggle" onClick={toggleTheme} type="button">
-            <span className="toggle-icon">{theme === "dark" ? "Moon" : "Sun"}</span>
-            <span className="toggle-track"><span className="toggle-knob" /></span>
-            <span className="toggle-lbl">{theme === "dark" ? "Dark" : "Light"}</span>
-          </button>
         </div>
       </aside>
 
@@ -181,7 +181,6 @@ export default function AdminPage() {
                 <div>
                   <p className="card-title">Admin command center</p>
                   <h1>{adminHeadline}</h1>
-                  <p>Upload, archive, restore, and delete student-attached videos in the shared Cadenza shell.</p>
                 </div>
                 <label className="profile-select">
                   Student

@@ -28,6 +28,7 @@ export type ListeningState = {
 };
 
 const STORAGE_KEY = "cadenza-listening-state-v1";
+export const LISTENING_STATE_UPDATED_EVENT = "listening-state-updated";
 
 export function youtubeThumbnailFromUrl(url: string) {
   const patterns = [
@@ -131,6 +132,7 @@ export function loadListeningState(): ListeningState {
 export function saveListeningState(state: ListeningState) {
   if (typeof window === "undefined") return;
   window.localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  window.dispatchEvent(new CustomEvent(LISTENING_STATE_UPDATED_EVENT));
 }
 
 export function addListeningTrack(input: {

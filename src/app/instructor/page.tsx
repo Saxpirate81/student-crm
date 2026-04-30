@@ -11,6 +11,7 @@ import { AddVideoModal, type VideoAssignmentOption } from "@/components/video/Ad
 import type { StudentVideo } from "@/lib/domain/types";
 import {
   addListeningTrack,
+  LISTENING_STATE_UPDATED_EVENT,
   loadListeningState,
   type ListeningState,
 } from "@/lib/listening/mock-listening-store";
@@ -24,6 +25,9 @@ import { parseYouTubeVideoId, youTubeEmbedUrl, youTubeThumbUrl } from "@/lib/you
 import { useRepository } from "@/lib/useRepository";
 import { useRotatingHeroHeadline } from "@/hooks/useRotatingHeroHeadline";
 import { useCadenzaTheme } from "@/hooks/useCadenzaTheme";
+import { GamifiedRewardTrack } from "@/components/gamification/GamifiedRewardTrack";
+import { getPracticeTotalSeconds, PRACTICE_TOTAL_UPDATED_EVENT } from "@/lib/practice-total";
+import { MOCK_USER_KEYS } from "@/lib/data/repository";
 
 const FALLBACK_VIDEO = "https://www.w3schools.com/html/mov_bbb.mp4";
 const FALLBACK_POSTER =
@@ -169,6 +173,7 @@ export default function InstructorPage() {
   const [listeningLessonId, setListeningLessonId] = useState("latest");
   const [listeningSongTitle, setListeningSongTitle] = useState("");
   const [listeningState, setListeningState] = useState<ListeningState>({ tracks: [], news: [] });
+  const [storedPracticeSeconds, setStoredPracticeSeconds] = useState(0);
   const [practiceReviewVersion, setPracticeReviewVersion] = useState(0);
   const [pendingPracticeReviews, setPendingPracticeReviews] = useState<PracticeSubmission[]>([]);
   const [reviewNotes, setReviewNotes] = useState<Record<string, string>>({});
@@ -222,8 +227,32 @@ export default function InstructorPage() {
   useEffect(() => {
     setListeningState(loadListeningState());
   }, [listeningVersion]);
+  useEffect(() => {
+    const syncPracticeTotal = () => setStoredPracticeSeconds(getPracticeTotalSeconds(MOCK_USER_KEYS.student));
+    syncPracticeTotal();
+    window.addEventListener(PRACTICE_TOTAL_UPDATED_EVENT, syncPracticeTotal);
+    window.addEventListener("storage", syncPracticeTotal);
+    return () => {
+      window.removeEventListener(PRACTICE_TOTAL_UPDATED_EVENT, syncPracticeTotal);
+      window.removeEventListener("storage", syncPracticeTotal);
+    };
+  }, []);
+  useEffect(() => {
+    const syncListening = () => {
+      setListeningState(loadListeningState());
+      setListeningVersion((value) => value + 1);
+    };
+    window.addEventListener(LISTENING_STATE_UPDATED_EVENT, syncListening);
+    window.addEventListener("storage", syncListening);
+    return () => {
+      window.removeEventListener(LISTENING_STATE_UPDATED_EVENT, syncListening);
+      window.removeEventListener("storage", syncListening);
+    };
+  }, []);
 
   const listeningTracks = listeningState.tracks.filter((track) => track.studentCrmId === studentCrmId);
+  const selectedPracticeMinutes = Math.round(storedPracticeSeconds / 60);
+  const selectedListeningMinutes = Math.round(listeningTracks.reduce((sum, track) => sum + track.listenedSeconds, 0) / 60);
   useEffect(() => {
     setPendingPracticeReviews(listPendingPracticeSubmissions(studentCrmId));
   }, [studentCrmId, practiceReviewVersion]);
@@ -347,6 +376,11 @@ export default function InstructorPage() {
           ))}
         </nav>
         <div className="sidebar-user">
+          <button className="theme-toggle menu-theme-toggle" onClick={toggleTheme} type="button">
+            <span className="toggle-icon">{theme === "dark" ? "Moon" : "Sun"}</span>
+            <span className="toggle-track"><span className="toggle-knob" /></span>
+            <span className="toggle-lbl">{theme === "dark" ? "Dark" : "Light"}</span>
+          </button>
           <div className="su-inner">
             <div className="su-avatar">SM</div>
             <div className="min-w-0">
@@ -354,11 +388,6 @@ export default function InstructorPage() {
               <div className="su-role">Piano Instructor</div>
             </div>
           </div>
-          <button className="theme-toggle menu-theme-toggle" onClick={toggleTheme} type="button">
-            <span className="toggle-icon">{theme === "dark" ? "Moon" : "Sun"}</span>
-            <span className="toggle-track"><span className="toggle-knob" /></span>
-            <span className="toggle-lbl">{theme === "dark" ? "Dark" : "Light"}</span>
-          </button>
         </div>
       </aside>
 
@@ -389,9 +418,6 @@ export default function InstructorPage() {
                 <div>
                   <p className="card-title">Instructor command center</p>
                   <h1>{instructorHeadline}</h1>
-                  <p>
-                    Upload lesson media, write notation exercises, and manage each student library inside the same Cadenza experience.
-                  </p>
                 </div>
                 <label className="profile-select">
                   Student
@@ -443,6 +469,8 @@ export default function InstructorPage() {
               videos={activeVideos}
               exercisesCount={exercises.length}
               listeningCount={listeningTracks.length}
+              listeningMinutes={selectedListeningMinutes}
+              practiceMinutes={selectedPracticeMinutes}
               reviewNotes={reviewNotes}
               setReviewNotes={setReviewNotes}
               onReviewPractice={(id, status) => {
@@ -852,6 +880,8 @@ function InstructorDashboard({
   videos,
   exercisesCount,
   listeningCount,
+  listeningMinutes,
+  practiceMinutes,
   reviewNotes,
   setReviewNotes,
   onReviewPractice,
@@ -866,6 +896,8 @@ function InstructorDashboard({
   videos: StudentVideo[];
   exercisesCount: number;
   listeningCount: number;
+  listeningMinutes: number;
+  practiceMinutes: number;
   reviewNotes: Record<string, string>;
   setReviewNotes: (notes: Record<string, string>) => void;
   onReviewPractice: (id: string, status: "reviewed" | "redo") => void;
@@ -873,8 +905,68 @@ function InstructorDashboard({
   setPage: (page: InstructorPageId) => void;
   setStudentCrmId: (id: string) => void;
 }) {
+  const studioMomentum = Math.min(100, Math.round(((practiceMinutes / 210) * 70) + ((listeningMinutes / 90) * 30)));
+  const rosterLeaders = roster.slice(0, 4).map((student, index) => ({
+    ...student,
+    minutes: student.crmId === "crm-alex" ? practiceMinutes : [132, 86, 54, 38][index] ?? 24,
+  })).sort((a, b) => b.minutes - a.minutes);
+
   return (
     <>
+      <GamifiedRewardTrack
+        eyebrow="Studio momentum"
+        title={`${selectedStudentName}'s weekly mission`}
+        subtitle="Practice minutes, listening time, lesson media, and review submissions now move this local testing track."
+        pointsLabel="Coach score"
+        pointsValue={`${practiceMinutes * 2 + listeningMinutes + videos.length * 25}`}
+        progress={studioMomentum}
+        steps={[
+          { label: "Practice", value: `${practiceMinutes}m`, tone: "gold", unlocked: practiceMinutes > 0 },
+          { label: "Listen", value: `${listeningMinutes}m`, tone: "cyan", unlocked: listeningMinutes > 0 },
+          { label: "Media", value: `${videos.length}`, tone: "purple", unlocked: videos.length > 0 },
+          { label: "Review", value: `${pendingPracticeReviews.length}`, tone: "green", unlocked: pendingPracticeReviews.length === 0 },
+        ]}
+      />
+
+      <section className="instructor-league-card">
+        <div className="practice-league-glow" aria-hidden />
+        <div className="practice-league-head">
+          <div>
+            <p className="card-title">Roster league</p>
+            <h2>Weekly practice momentum</h2>
+            <p>Local testing totals update as students log practice and listening activity in this browser.</p>
+          </div>
+          <div className="practice-rank-medal">
+            <span>Focus</span>
+            <strong>{practiceMinutes + listeningMinutes}</strong>
+            <small>min</small>
+          </div>
+        </div>
+        <div className="practice-league-board">
+          {rosterLeaders.map((student, index) => {
+            const maxMinutes = Math.max(...rosterLeaders.map((leader) => leader.minutes), 1);
+            const progress = Math.max(8, Math.round((student.minutes / maxMinutes) * 100));
+            const selected = student.displayName === selectedStudentName;
+            return (
+              <button
+                className={`practice-league-row ${selected ? "current" : ""}`}
+                key={student.crmId}
+                onClick={() => setStudentCrmId(student.crmId)}
+                type="button"
+              >
+                <span className={`league-place place-${index + 1}`}>{index + 1}</span>
+                <span className="league-avatar">{initials(student.displayName)}</span>
+                <span className="league-name">
+                  <strong>{student.displayName}{selected ? " (selected)" : ""}</strong>
+                  <span className="league-progress"><span style={{ width: `${progress}%` }} /></span>
+                </span>
+                <span className="league-minutes">{student.minutes}m</span>
+              </button>
+            );
+          })}
+        </div>
+      </section>
+
       <section className="grid2">
         <div className="card">
           <div className="card-header">

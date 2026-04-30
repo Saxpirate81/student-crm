@@ -1,5 +1,6 @@
 const TOTAL_KEY_PREFIX = "rs-practice-total-sec-";
 const MILESTONE_KEY_PREFIX = "rs-practice-milestone-celebrated-sec-";
+export const PRACTICE_TOTAL_UPDATED_EVENT = "practice-total-updated";
 
 export function practiceTotalStorageKey(userKey: string) {
   return `${TOTAL_KEY_PREFIX}${userKey}`;
@@ -31,6 +32,7 @@ export function addPracticeSeconds(userKey: string, seconds: number) {
   const next = prev + rounded;
   try {
     window.localStorage.setItem(practiceTotalStorageKey(userKey), String(next));
+    window.dispatchEvent(new CustomEvent(PRACTICE_TOTAL_UPDATED_EVENT, { detail: { userKey, totalSeconds: next } }));
   } catch {
     /* ignore */
   }

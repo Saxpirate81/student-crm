@@ -118,6 +118,11 @@ export default function ProducerPage() {
           ))}
         </nav>
         <div className="sidebar-user">
+          <button className="theme-toggle menu-theme-toggle" onClick={toggleTheme} type="button">
+            <span className="toggle-icon">{theme === "dark" ? "Moon" : "Sun"}</span>
+            <span className="toggle-track"><span className="toggle-knob" /></span>
+            <span className="toggle-lbl">{theme === "dark" ? "Dark" : "Light"}</span>
+          </button>
           <div className="su-inner">
             <div className="su-avatar">PR</div>
             <div className="min-w-0">
@@ -125,11 +130,6 @@ export default function ProducerPage() {
               <div className="su-role">{session?.kind === "producer" ? session.email : "Scaffold Mode"}</div>
             </div>
           </div>
-          <button className="theme-toggle menu-theme-toggle" onClick={toggleTheme} type="button">
-            <span className="toggle-icon">{theme === "dark" ? "Moon" : "Sun"}</span>
-            <span className="toggle-track"><span className="toggle-knob" /></span>
-            <span className="toggle-lbl">{theme === "dark" ? "Dark" : "Light"}</span>
-          </button>
         </div>
       </aside>
 
@@ -155,9 +155,6 @@ export default function ProducerPage() {
             <div>
               <p className="card-title">Producer workspace scaffold</p>
               <h1>{producerHeadline}</h1>
-              <p>
-                This is the first migration step from the Google Script webapp. Next we wire live data and actions.
-              </p>
             </div>
             {ready && session?.kind === "producer" ? (
               <span className="badge b-green">Signed in as {session.displayName}</span>

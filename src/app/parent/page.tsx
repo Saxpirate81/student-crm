@@ -183,6 +183,11 @@ export default function ParentPage() {
           ))}
         </nav>
         <div className="sidebar-user">
+          <button className="theme-toggle menu-theme-toggle" onClick={toggleTheme} type="button">
+            <span className="toggle-icon">{theme === "dark" ? "Moon" : "Sun"}</span>
+            <span className="toggle-track"><span className="toggle-knob" /></span>
+            <span className="toggle-lbl">{theme === "dark" ? "Dark" : "Light"}</span>
+          </button>
           <div className="su-inner">
             <div className="su-avatar">{initials(session?.kind === "parent" ? session.displayName : "Demo Parent")}</div>
             <div className="min-w-0">
@@ -190,11 +195,6 @@ export default function ParentPage() {
               <div className="su-role">{session?.kind === "parent" ? session.email : effectiveParentCrmId}</div>
             </div>
           </div>
-          <button className="theme-toggle menu-theme-toggle" onClick={toggleTheme} type="button">
-            <span className="toggle-icon">{theme === "dark" ? "Moon" : "Sun"}</span>
-            <span className="toggle-track"><span className="toggle-knob" /></span>
-            <span className="toggle-lbl">{theme === "dark" ? "Dark" : "Light"}</span>
-          </button>
         </div>
       </aside>
 
@@ -222,9 +222,6 @@ export default function ParentPage() {
                 <div>
                   <p className="card-title">Parent command center</p>
                   <h1>{parentHeadline}</h1>
-                  <p>
-                    Preview student videos, monitor household setup, and manage family logins from the same Cadenza shell.
-                  </p>
                 </div>
                 {session?.kind === "parent" ? (
                   <span className="badge b-green">{session.displayName}</span>
