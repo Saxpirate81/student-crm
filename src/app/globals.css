@@ -965,7 +965,6 @@ body {
   border-radius: var(--r);
   box-shadow: 0 16px 44px rgba(15, 23, 42, 0.14);
   margin-bottom: 12px;
-  min-height: 196px;
   overflow: hidden;
   padding: 16px;
   position: relative;
@@ -1022,7 +1021,8 @@ body {
 .game-xp-chip strong { color: var(--gold); font-family: "Space Mono", monospace; font-size: 18px; line-height: 1; }
 
 .game-track-wrap {
-  padding: 50px 16px 10px;
+  /* Bottom space for .game-step labels below the 12px bar (steps are position:absolute, so they do not grow the track height) */
+  padding: 50px 16px 60px;
   position: relative;
   z-index: 1;
 }
@@ -1111,7 +1111,7 @@ body {
   .game-track-wrap {
     margin: 0;
     overflow: visible;
-    padding: 46px 0 20px;
+    padding: 46px 0 52px;
   }
 
   .game-track {
@@ -2871,6 +2871,36 @@ input[type="range"]::-webkit-slider-thumb {
   .sidebar .menu-theme-toggle { display: flex; justify-content: center; }
   .btn-primary { padding: 7px 10px; }
   .studio-hero { align-items: stretch; flex-direction: column; }
+
+  /* Student studio home only: shorter dark hero on small screens */
+  .studio-hero.studio-hero--student-home {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 0;
+    margin-bottom: 8px;
+    padding: 10px 12px;
+  }
+
+  .studio-hero.studio-hero--student-home .card-title,
+  .studio-hero.studio-hero--student-home > .profile-select,
+  .studio-hero.studio-hero--student-home > .badge {
+    display: none;
+  }
+
+  .studio-hero.studio-hero--student-home h1 {
+    font-size: 1.2rem;
+    letter-spacing: -0.35px;
+    line-height: 1.15;
+    margin: 0;
+  }
+
+  .studio-hero.studio-hero--student-home::after {
+    height: 140px;
+    right: -70px;
+    top: -72px;
+    width: 140px;
+  }
+
   .instructor-context { align-items: stretch; flex-direction: column; }
   .profile-select.compact select { width: 100%; }
 }

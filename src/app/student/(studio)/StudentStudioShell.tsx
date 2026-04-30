@@ -808,13 +808,10 @@ export function StudentStudioDashboard(props: {
 
   return (
     <>
-      <section className="studio-hero">
+      <section className="studio-hero studio-hero--student-home">
         <div>
           <p className="card-title">Your practice space</p>
           <h1>{greetingHeadline}</h1>
-          <p>
-            Lessons, tutorials, practice tools, and progress from the current app now live inside the Cadenza studio shell.
-          </p>
         </div>
         {sessionKind === "child" ? (
           <span className="badge b-green">Family session</span>
