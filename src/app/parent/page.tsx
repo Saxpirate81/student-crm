@@ -1,11 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { ActivityFeed } from "@/components/parent/ActivityFeed";
 import { VideoCard } from "@/components/VideoCard";
 import { CadenzaMessageBoard } from "@/components/messaging/CadenzaMessageBoard";
+import { StudioSchedule } from "@/components/schedule/StudioSchedule";
+import { blockIncludesStudent } from "@/lib/ops-roster/schedule";
+import { sessionPath } from "@/lib/ops-roster/session-href";
 import { GamifiedRewardTrack } from "@/components/gamification/GamifiedRewardTrack";
 import { MOCK_DEMO_PASSWORD } from "@/lib/auth/constants";
 import type { MockSessionParent } from "@/lib/auth/types";
@@ -69,8 +72,9 @@ function initials(name: string) {
 
 export default function ParentPage() {
   const pathname = usePathname();
+  const router = useRouter();
   const { session, ready, addChild, resetChildPassword } = useAuth();
-  const { repository, refresh, version, loading, error, rosterMeta } = useRepository();
+  const { repository, refresh, version, loading, error, rosterMeta, schedule } = useRepository();
   const { theme, toggleTheme } = useCadenzaTheme();
   const [page, setPage] = useState<ParentPageId>("dashboard");
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -137,6 +141,11 @@ export default function ParentPage() {
 
   const accountDetails = session?.kind === "parent" ? getAccountDetailsForParent(session) : null;
   const selectedStudentRow = children.find((student) => student.crmId === selectedStudent);
+
+  const householdSchedule = useMemo(
+    () => schedule.filter((block) => children.some((child) => blockIncludesStudent(block, child.crmId))),
+    [schedule, children],
+  );
 
   const pageTitle: Record<ParentPageId, string> = {
     dashboard: "Parent Dashboard",
@@ -272,6 +281,13 @@ export default function ParentPage() {
               ) : null}
 
               <CadenzaMessageBoard viewerRole="parent" />
+
+              <StudioSchedule
+                blocks={householdSchedule}
+                selectedId={selectedStudent}
+                emptyLabel={loading ? "Loading family schedule…" : "No lessons on this household schedule yet."}
+                onBlockClick={(block) => router.push(sessionPath("parent", block))}
+              />
 
               <GamifiedRewardTrack
                 eyebrow="Family rewards"

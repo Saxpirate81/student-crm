@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { useQuickRecorder } from "@/hooks/useQuickRecorder";
 import { ExerciseCard } from "@/components/music/ExerciseCard";
@@ -37,6 +37,7 @@ import {
 } from "@/hooks/useKeepRosterSelection";
 import { StudioSchedule } from "@/components/schedule/StudioSchedule";
 import { studentOptionLabel } from "@/lib/ops-roster/households";
+import { sessionPath } from "@/lib/ops-roster/session-href";
 
 const INSTRUCTOR_STORAGE_KEY = "cadenza-selected-instructor";
 const FALLBACK_VIDEO = "https://www.w3schools.com/html/mov_bbb.mp4";
@@ -169,6 +170,7 @@ function InstructorVideoCard({
 
 export default function InstructorPage() {
   const pathname = usePathname();
+  const router = useRouter();
   const { repository, version, refresh, loading, error, rosterMeta, instructors, schedule } = useRepository();
   const { theme, toggleTheme } = useCadenzaTheme();
   const [page, setPage] = useState<InstructorPageId>("dashboard");
@@ -555,9 +557,7 @@ export default function InstructorPage() {
                 selectedId={studentCrmId}
                 emptyLabel="No lessons on this instructor's schedule."
                 onBlockClick={(block) => {
-                  if (block.kind !== "lesson") return;
-                  setStudentCrmId(block.studentId);
-                  setPage("dashboard");
+                  router.push(sessionPath("instructor", block));
                 }}
               />
 

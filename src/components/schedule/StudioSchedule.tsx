@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { blockIncludesStudent, type ScheduleBlock } from "@/lib/ops-roster/schedule";
+import { applyLocalLessonStatus, LESSON_STATUS_EVENT } from "@/lib/ops-roster/session-status";
 import {
   addDaysIso,
   currentEasternMinutes,
@@ -40,6 +41,16 @@ export function StudioSchedule({
   onBlockClick,
 }: StudioScheduleProps) {
   const today = todayEasternIso();
+  const [statusTick, setStatusTick] = useState(0);
+  useEffect(() => {
+    const bump = () => setStatusTick((value) => value + 1);
+    window.addEventListener(LESSON_STATUS_EVENT, bump);
+    return () => window.removeEventListener(LESSON_STATUS_EVENT, bump);
+  }, []);
+  const resolvedBlocks = useMemo(() => {
+    void statusTick;
+    return applyLocalLessonStatus(blocks);
+  }, [blocks, statusTick]);
   const [mode, setMode] = useState<"daily" | "weekly">("daily");
   const [day, setDay] = useState(today);
   const boardRef = useRef<HTMLDivElement>(null);
@@ -51,8 +62,8 @@ export function StudioSchedule({
 
   const visibleDays = mode === "daily" ? [day] : weekDays;
   const visibleBlocks = useMemo(
-    () => blocks.filter((block) => visibleDays.includes(block.date)),
-    [blocks, visibleDays],
+    () => resolvedBlocks.filter((block) => visibleDays.includes(block.date)),
+    [resolvedBlocks, visibleDays],
   );
 
   const hours = Array.from({ length: END_HOUR - START_HOUR }, (_, index) => START_HOUR + index);
@@ -146,7 +157,7 @@ export function StudioSchedule({
                     return (
                       <button
                         key={block.id}
-                        className={`studio-schedule-block is-${block.kind}${selected ? " is-selected" : ""}`}
+                        className={`studio-schedule-block is-${block.kind}${selected ? " is-selected" : ""}${/^complete/i.test(block.status) ? " is-complete" : ""}`}
                         style={{ top, height }}
                         type="button"
                         onClick={() => onBlockClick?.(block)}

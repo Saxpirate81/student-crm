@@ -41,6 +41,7 @@ import { useKeepRosterSelection, CADENZA_SELECTED_STUDENT_KEY, readStoredRosterI
 import { StudioSchedule } from "@/components/schedule/StudioSchedule";
 import { blockIncludesStudent } from "@/lib/ops-roster/schedule";
 import { studentOptionLabel } from "@/lib/ops-roster/households";
+import { sessionPath } from "@/lib/ops-roster/session-href";
 import {
   addPracticeSeconds,
   getPracticeTotalSeconds,
@@ -488,7 +489,6 @@ export function StudentStudioLayout({ children }: { children: ReactNode }) {
         rosterLoading: loading,
         rosterError: error,
         rosterCount: rosterMeta?.studentCount ?? selectableStudents.length,
-        onOpenPractice: () => openStudioPage("practice"),
       },
       practicePage: {
         assignments,
@@ -815,7 +815,6 @@ export function StudentStudioDashboard(props: {
   rosterLoading?: boolean;
   rosterError?: string | null;
   rosterCount?: number;
-  onOpenPractice?: () => void;
 }) {
   const {
     activeProgram,
@@ -846,10 +845,10 @@ export function StudentStudioDashboard(props: {
     rosterLoading,
     rosterError,
     rosterCount,
-    onOpenPractice,
   } = props;
 
   const { name: greetingName, phrase: greetingPhrase } = useRotatingHeroGreeting("student", firstName);
+  const router = useRouter();
   const topPracticeMinutes = practiceRanking ? Math.max(...practiceRanking.leaders.map((leader) => leader.minutes), weekTotal, 1) : 1;
   const nextPracticeTarget = practiceRanking
     ? practiceRanking.leaders.find((leader) => leader.minutes > weekTotal)
@@ -896,7 +895,7 @@ export function StudentStudioDashboard(props: {
         selectedId={student?.crmId}
         titleField="instructor"
         emptyLabel={rosterLoading ? "Loading your schedule…" : "No lessons on your schedule yet."}
-        onBlockClick={() => onOpenPractice?.()}
+        onBlockClick={(block) => router.push(sessionPath("student", block))}
       />
 
       <GamifiedRewardTrack
