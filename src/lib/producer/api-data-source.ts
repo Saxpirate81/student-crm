@@ -33,18 +33,42 @@ export type ProducerWorkspaceApiClient = {
 export function createApiProducerWorkspaceDataSource(
   client?: ProducerWorkspaceApiClient,
 ): ProducerWorkspaceDataSource {
-  void client;
   const fallback = createMockProducerWorkspaceDataSource();
+  const useMockFallback = process.env.NEXT_PUBLIC_ENABLE_PRODUCER_MOCK_FALLBACK === "true";
+  const emptySnapshot: ProducerWorkspaceSnapshot = {
+    playbookVersion: "Current",
+    rules: [],
+    tasks: [],
+    matrixRows: [],
+  };
+  const apiClient: ProducerWorkspaceApiClient = client ?? {
+    async getWorkspaceSnapshot() {
+      const res = await fetch("/api/producer/workspace", {
+        method: "GET",
+        headers: { Accept: "application/json" },
+        cache: "no-store",
+      });
+      if (!res.ok) {
+        throw new Error(`Workspace API failed (${res.status})`);
+      }
+      const payload = (await res.json()) as { snapshot?: ProducerWorkspaceSnapshot };
+      if (!payload.snapshot) throw new Error("Workspace API returned no snapshot");
+      return payload.snapshot;
+    },
+  };
 
   return {
     getInitialSnapshot: () => {
-      // TODO(api): replace this fallback with an async bootstrap path once
-      // useProducerWorkspace supports async initialization.
-      return fallback.getInitialSnapshot();
+      return useMockFallback ? fallback.getInitialSnapshot() : emptySnapshot;
+    },
+    loadWorkspaceSnapshot: async () => {
+      try {
+        return await apiClient.getWorkspaceSnapshot();
+      } catch {
+        return useMockFallback ? fallback.getInitialSnapshot() : emptySnapshot;
+      }
     },
     listPlaybookVersions: (rules, tasks) => {
-      // TODO(api): optionally resolve versions from server (if version catalog
-      // is not derivable client-side).
       return fallback.listPlaybookVersions(rules, tasks);
     },
   };

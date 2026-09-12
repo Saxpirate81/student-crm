@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useCadenzaTheme } from "@/hooks/useCadenzaTheme";
 import { isShowcaseTextAllowed } from "@/lib/showcase-moderation";
 import { useRepository } from "@/lib/useRepository";
+import { useKeepRosterSelection } from "@/hooks/useKeepRosterSelection";
 
 const EMOJIS = ["👏", "🎉", "🔥", "💜"];
 
@@ -21,6 +22,11 @@ export default function StudentShowcasePage() {
     void version;
     return repository.listStudents();
   }, [repository, version]);
+  useKeepRosterSelection(
+    students.map((student) => student.crmId),
+    studentCrmId,
+    setStudentCrmId,
+  );
 
   const videos = useMemo(() => {
     void version;

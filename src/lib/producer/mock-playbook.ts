@@ -8,7 +8,7 @@ export type Assignee = "Teacher" | "Ops" | "Both";
 export type ProducerPlaybookRule = {
   ruleId: string;
   playbookVersion: PlaybookVersion;
-  learningTrack: LearningTrack;
+  learningTrack: string;
   targetLesson: number;
   placement: "lesson" | "between";
   taskName: string;

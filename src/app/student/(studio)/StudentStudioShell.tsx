@@ -13,6 +13,7 @@ import { useAuth } from "@/lib/auth/auth-context";
 import { useMetronome } from "@/hooks/useMetronome";
 import { useMicPracticeDetector } from "@/hooks/useMicPracticeDetector";
 import { useCadenzaTheme } from "@/hooks/useCadenzaTheme";
+import { CadenzaLogOutButton } from "@/components/cadenza/CadenzaLogOutButton";
 import {
   addListeningSeconds,
   addListeningTrack,
@@ -32,10 +33,14 @@ import {
 import { getStudentCopyProfile, type StudentCopyProfile } from "@/lib/student-engagement";
 import { useRepository } from "@/lib/useRepository";
 import { CadenzaMessageBoard } from "@/components/messaging/CadenzaMessageBoard";
-import { useRotatingHeroHeadline } from "@/hooks/useRotatingHeroHeadline";
+import { useRotatingHeroGreeting } from "@/hooks/useRotatingHeroHeadline";
 import { PracticeGoalRing } from "@/components/student/PracticeGoalRing";
 import { AddVideoModal, type VideoAssignmentOption } from "@/components/video/AddVideoModal";
 import { GamifiedRewardTrack } from "@/components/gamification/GamifiedRewardTrack";
+import { useKeepRosterSelection, CADENZA_SELECTED_STUDENT_KEY, readStoredRosterId, writeStoredRosterId } from "@/hooks/useKeepRosterSelection";
+import { StudioSchedule } from "@/components/schedule/StudioSchedule";
+import { blockIncludesStudent } from "@/lib/ops-roster/schedule";
+import { studentOptionLabel } from "@/lib/ops-roster/households";
 import {
   addPracticeSeconds,
   getPracticeTotalSeconds,
@@ -258,10 +263,12 @@ export function StudentStudioLayout({ children }: { children: ReactNode }) {
     [router],
   );
   const { session, ready } = useAuth();
-  const { repository, refresh, version } = useRepository();
+  const { repository, refresh, version, schedule, loading, error, rosterMeta } = useRepository();
   const { theme, toggleTheme } = useCadenzaTheme();
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const [studentCrmId, setStudentCrmId] = useState("crm-alex");
+  const [studentCrmId, setStudentCrmId] = useState(() =>
+    readStoredRosterId(CADENZA_SELECTED_STUDENT_KEY, "crm-alex"),
+  );
   const [practiceSeconds, setPracticeSeconds] = useState(0);
   const [storedPracticeSeconds, setStoredPracticeSeconds] = useState(0);
   const [micRetryNonce, setMicRetryNonce] = useState(0);
@@ -285,9 +292,24 @@ export function StudentStudioLayout({ children }: { children: ReactNode }) {
   const selectableStudents = useMemo(() => {
     void version;
     const all = repository.listStudents();
-    if (session?.kind === "parent") return all.filter((row) => row.parentCrmId === session.parentCrmId);
+    if (session?.kind === "parent") {
+      const email = session.email.trim().toLowerCase();
+      const byEmail = all.filter((row) => (row.parentEmail ?? "").toLowerCase() === email);
+      if (byEmail.length) return byEmail;
+      return all.filter((row) => row.parentCrmId === session.parentCrmId);
+    }
     return all;
   }, [repository, session, version]);
+
+  useKeepRosterSelection(
+    loading ? [] : selectableStudents.map((student) => student.crmId),
+    studentCrmId,
+    setStudentCrmId,
+  );
+
+  useEffect(() => {
+    writeStoredRosterId(CADENZA_SELECTED_STUDENT_KEY, studentCrmId);
+  }, [studentCrmId]);
 
   useEffect(() => {
     if (!ready) return;
@@ -460,6 +482,13 @@ export function StudentStudioLayout({ children }: { children: ReactNode }) {
         weekPractice,
         weekTotal: gamifiedPracticeMinutes,
         listeningTracks,
+        scheduleBlocks: schedule.filter((block) =>
+          blockIncludesStudent(block, student?.crmId ?? studentCrmId),
+        ),
+        rosterLoading: loading,
+        rosterError: error,
+        rosterCount: rosterMeta?.studentCount ?? selectableStudents.length,
+        onOpenPractice: () => openStudioPage("practice"),
       },
       practicePage: {
         assignments,
@@ -608,6 +637,7 @@ export function StudentStudioLayout({ children }: { children: ReactNode }) {
       videos,
       weekPractice,
       gamifiedPracticeMinutes,
+      schedule,
     ],
   );
 
@@ -685,6 +715,7 @@ export function StudentStudioLayout({ children }: { children: ReactNode }) {
               <div className="su-role">Lv.{level} · {programs.map((program) => programLabels[program]).join(", ")}</div>
             </div>
           </div>
+          <CadenzaLogOutButton />
         </div>
       </aside>
 
@@ -780,6 +811,11 @@ export function StudentStudioDashboard(props: {
   weekPractice: number[];
   weekTotal: number;
   listeningTracks: ListeningTrack[];
+  scheduleBlocks?: import("@/lib/ops-roster/schedule").ScheduleBlock[];
+  rosterLoading?: boolean;
+  rosterError?: string | null;
+  rosterCount?: number;
+  onOpenPractice?: () => void;
 }) {
   const {
     activeProgram,
@@ -806,9 +842,14 @@ export function StudentStudioDashboard(props: {
     weekPractice,
     weekTotal,
     listeningTracks,
+    scheduleBlocks = [],
+    rosterLoading,
+    rosterError,
+    rosterCount,
+    onOpenPractice,
   } = props;
 
-  const greetingHeadline = useRotatingHeroHeadline("student", firstName);
+  const { name: greetingName, phrase: greetingPhrase } = useRotatingHeroGreeting("student", firstName);
   const topPracticeMinutes = practiceRanking ? Math.max(...practiceRanking.leaders.map((leader) => leader.minutes), weekTotal, 1) : 1;
   const nextPracticeTarget = practiceRanking
     ? practiceRanking.leaders.find((leader) => leader.minutes > weekTotal)
@@ -817,28 +858,46 @@ export function StudentStudioDashboard(props: {
 
   return (
     <>
-      <section className="studio-hero studio-hero--student-home">
-        <div>
+      <section className="studio-hero studio-hero--student-home studio-hero--dashboard">
+        <div className="hero-identity">
           <p className="card-title">Your practice space</p>
-          <h1>{greetingHeadline}</h1>
+          <h1>{greetingName}</h1>
+          <p className="hero-phrase">{greetingPhrase}</p>
+        </div>
+        <div className="hero-messages">
+          <CadenzaMessageBoard viewerRole="student" variant="hero" />
         </div>
         {sessionKind === "child" ? (
-          <span className="badge b-green">Family session</span>
+          <span className="badge b-green hero-selects">Family session</span>
         ) : (
-          <label className="profile-select">
-            Profile
-            <select value={studentCrmId} onChange={(event) => setStudentCrmId(event.target.value)}>
-              {selectableStudents.map((entry) => (
-                <option key={entry.crmId} value={entry.crmId}>
-                  {entry.displayName}
-                </option>
-              ))}
-            </select>
-          </label>
+          <div className="hero-selects">
+            <label className="profile-select">
+              Profile
+              {rosterLoading ? " (loading…)" : rosterCount ? ` (${rosterCount})` : ""}
+              <select value={studentCrmId} onChange={(event) => setStudentCrmId(event.target.value)}>
+                {selectableStudents.map((entry) => (
+                  <option key={entry.crmId} value={entry.crmId}>
+                    {studentOptionLabel(entry)}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
         )}
       </section>
+      {rosterError ? (
+        <p className="mb-3 rounded-xl border border-red-500/30 bg-red-950/40 px-3 py-2 text-sm text-red-200">
+          Live roster: {rosterError}
+        </p>
+      ) : null}
 
-      <CadenzaMessageBoard viewerRole="student" />
+      <StudioSchedule
+        blocks={scheduleBlocks}
+        selectedId={student?.crmId}
+        titleField="instructor"
+        emptyLabel={rosterLoading ? "Loading your schedule…" : "No lessons on your schedule yet."}
+        onBlockClick={() => onOpenPractice?.()}
+      />
 
       <GamifiedRewardTrack
         eyebrow="Reward path"

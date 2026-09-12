@@ -5,19 +5,20 @@ import {
   applyThemeToDocument,
   readStoredTheme,
   writeStoredTheme,
+  DEFAULT_UI_THEME,
   type UiTheme,
 } from "@/lib/theme-storage";
 
 export function useCadenzaTheme() {
-  const [theme, setThemeState] = useState<UiTheme>("light");
+  const [theme, setThemeState] = useState<UiTheme>(DEFAULT_UI_THEME);
 
   useLayoutEffect(() => {
-    const initial = readStoredTheme() ?? "light";
+    const initial = readStoredTheme() ?? DEFAULT_UI_THEME;
     setThemeState(initial);
     applyThemeToDocument(initial);
 
     const sync = () => {
-      const next = readStoredTheme() ?? "light";
+      const next = readStoredTheme() ?? DEFAULT_UI_THEME;
       setThemeState(next);
       applyThemeToDocument(next);
     };

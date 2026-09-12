@@ -83,10 +83,19 @@ function poolForRole(role: HeroGreetingRole): string[] {
   }
 }
 
-function firstNameFromDisplay(displayName: string): string {
+export function firstNameFromDisplay(displayName: string): string {
   const trimmed = displayName.trim();
   if (!trimmed) return "there";
   return trimmed.split(/\s+/)[0] ?? trimmed;
+}
+
+export function phraseFromHeroHeadline(headline: string, displayName: string) {
+  const name = firstNameFromDisplay(displayName);
+  const prefix = `${name}, `;
+  if (headline.startsWith(prefix)) {
+    return { name, phrase: headline.slice(prefix.length) };
+  }
+  return { name, phrase: headline };
 }
 
 /** Line 0 only — matches first client paint before `useEffect` runs. */

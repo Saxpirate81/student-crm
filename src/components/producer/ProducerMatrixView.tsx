@@ -2,73 +2,23 @@
 
 import { useMemo, useState } from "react";
 import type { Dispatch, SetStateAction } from "react";
-import type { ProducerPlaybookRule } from "@/lib/producer/mock-playbook";
-import type { PlaybookVersion, ProducerQueueTask } from "@/lib/producer/mock-queue";
+import type { PlaybookVersion } from "@/lib/producer/mock-queue";
+import type { ProducerMatrixRow } from "@/lib/producer/data-source";
 
 type ProducerMatrixViewProps = {
-  rules: ProducerPlaybookRule[];
-  tasks: ProducerQueueTask[];
+  matrixRows: ProducerMatrixRow[];
   playbookVersion: PlaybookVersion;
   setPlaybookVersion: Dispatch<SetStateAction<PlaybookVersion>>;
   playbookVersions: PlaybookVersion[];
 };
 
-type MatrixRow = {
-  studentName: string;
-  instrument: string;
-  learningTrack: string;
-  velocityLesson: number;
-  pulseScore: number;
-  pulseLabel: string;
-};
-
-function pulseLabel(score: number) {
-  if (score < 50) return "Critical";
-  if (score < 70) return "At Risk";
-  if (score < 85) return "Good";
-  return "Excellent";
-}
-
 export function ProducerMatrixView({
-  rules,
-  tasks,
+  matrixRows,
   playbookVersion,
   setPlaybookVersion,
   playbookVersions,
 }: ProducerMatrixViewProps) {
   const [query, setQuery] = useState("");
-
-  const matrixRows = useMemo<MatrixRow[]>(() => {
-    const taskRows = tasks.filter((task) => task.playbookVersion === playbookVersion);
-    const byStudent = new Map<string, ProducerQueueTask[]>();
-    taskRows.forEach((task) => {
-      const list = byStudent.get(task.studentName) ?? [];
-      list.push(task);
-      byStudent.set(task.studentName, list);
-    });
-
-    return [...byStudent.entries()].map(([studentName, entries]) => {
-      const latest = [...entries].sort((a, b) => b.triggerLesson - a.triggerLesson)[0];
-      const matchingRule =
-        rules.find(
-          (rule) =>
-            rule.playbookVersion === playbookVersion &&
-            rule.targetLesson === latest.triggerLesson &&
-            rule.taskName === latest.taskName,
-        ) ?? null;
-      const velocityLesson = Math.max(...entries.map((entry) => entry.triggerLesson));
-      const rawScore = 98 - velocityLesson * 3 - entries.length * 4;
-      const score = Math.max(24, Math.min(95, rawScore));
-      return {
-        studentName,
-        instrument: latest.instrument,
-        learningTrack: matchingRule?.learningTrack ?? "All",
-        velocityLesson,
-        pulseScore: score,
-        pulseLabel: pulseLabel(score),
-      };
-    });
-  }, [tasks, rules, playbookVersion]);
 
   const visibleRows = useMemo(() => {
     const search = query.trim().toLowerCase();

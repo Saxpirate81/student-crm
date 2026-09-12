@@ -1,17 +1,28 @@
 "use client";
 
-import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import { useAuth } from "@/lib/auth/auth-context";
 import { MOCK_DEMO_PASSWORD, MOCK_PRODUCER_EMAIL } from "@/lib/auth/constants";
+import { ensureSimpleTestOrgInBundle, previewParentInvite } from "@/lib/auth/mock-auth-store";
+import {
+  getSimpleMockTestInviteToken,
+  getSimpleMockTestOrgName,
+  isSimpleMockTestOrgEnabled,
+} from "@/lib/config/mock-simple-test-org";
+import { safeInternalNextPath } from "@/lib/navigation/safe-internal-next-path";
 
-type Tab = "parent" | "student" | "producer";
+type SignInTab = "parent" | "student" | "producer" | "staff";
+type Screen = "signin" | "signup";
 
-export default function LoginPage() {
+function LoginPageInner() {
   const router = useRouter();
-  const { loginAsParent, loginAsChild, loginAsProducer } = useAuth();
-  const [tab, setTab] = useState<Tab>("parent");
+  const searchParams = useSearchParams();
+  const { loginAsParent, loginAsChild, loginAsProducer, signUp } = useAuth();
+
+  const [screen, setScreen] = useState<Screen>("signin");
+  const [signInTab, setSignInTab] = useState<SignInTab>("parent");
+
   const [parentEmail, setParentEmail] = useState("");
   const [parentPassword, setParentPassword] = useState("");
   const [familyParentEmail, setFamilyParentEmail] = useState("");
@@ -19,237 +30,615 @@ export default function LoginPage() {
   const [familyPassword, setFamilyPassword] = useState("");
   const [producerEmail, setProducerEmail] = useState("");
   const [producerPassword, setProducerPassword] = useState("");
+
+  const [orgName, setOrgName] = useState("");
+  const [inviteToken, setInviteToken] = useState("");
+  const [parentDisplayName, setParentDisplayName] = useState("");
+  const [signupEmail, setSignupEmail] = useState("");
+  const [signupPassword, setSignupPassword] = useState("");
+  const [addStudentNow, setAddStudentNow] = useState(true);
+  const [childDisplayName, setChildDisplayName] = useState("");
+  const [childScreenName, setChildScreenName] = useState("");
+  const [childPassword, setChildPassword] = useState("");
+
   const [error, setError] = useState<string | null>(null);
 
-  const submitParent = (event: React.FormEvent) => {
+  useEffect(() => {
+    ensureSimpleTestOrgInBundle();
+    setInviteToken(searchParams.get("invite")?.trim() ?? "");
+    if (searchParams.get("mode") === "signup") {
+      setScreen("signup");
+    }
+  }, [searchParams]);
+
+  const invitePreview = useMemo(() => {
+    if (!inviteToken) return null;
+    return previewParentInvite(inviteToken);
+  }, [inviteToken]);
+
+  const postLoginReturnTo = useMemo(() => safeInternalNextPath(searchParams.get("next")), [searchParams]);
+
+  function replaceLoginSearch(next: URLSearchParams) {
+    const qs = next.toString();
+    router.replace(qs ? `/auth/login?${qs}` : "/auth/login");
+  }
+
+  function redirectAfterSignIn(fallback: string) {
+    const next = safeInternalNextPath(searchParams.get("next"));
+    router.push(next ?? fallback);
+  }
+
+  useEffect(() => {
+    if (!isSimpleMockTestOrgEnabled()) return;
+    if (screen !== "signup") return;
+    if (searchParams.get("invite")?.trim()) return;
+    const token = getSimpleMockTestInviteToken();
+    const next = new URLSearchParams(searchParams.toString());
+    next.set("mode", "signup");
+    next.set("invite", token);
+    replaceLoginSearch(next);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only react to screen / invite presence
+  }, [screen, searchParams]);
+
+  const submitParent = async (event: React.FormEvent) => {
     event.preventDefault();
     setError(null);
-    const ok = loginAsParent(parentEmail, parentPassword);
+    if (parentEmail.trim().toLowerCase() === MOCK_PRODUCER_EMAIL.toLowerCase()) {
+      setError(
+        `“${MOCK_PRODUCER_EMAIL}” is the studio producer demo, not a parent account. Tap the Producer tab above, enter the same email, password “${MOCK_DEMO_PASSWORD}”, then Continue.`,
+      );
+      return;
+    }
+    const ok = await loginAsParent(parentEmail, parentPassword);
     if (!ok) {
       setError("Email or password does not match.");
       return;
     }
-    router.push("/parent");
+    redirectAfterSignIn("/parent");
   };
 
-  const submitFamily = (event: React.FormEvent) => {
+  const submitFamily = async (event: React.FormEvent) => {
     event.preventDefault();
     setError(null);
-    const ok = loginAsChild(familyParentEmail, screenName, familyPassword);
+    const ok = await loginAsChild(familyParentEmail, screenName, familyPassword);
     if (!ok) {
       setError("Check parent account email, screen name, and password.");
       return;
     }
-    router.push("/student");
+    redirectAfterSignIn("/student");
   };
 
-  const submitProducer = (event: React.FormEvent) => {
+  const submitProducer = async (event: React.FormEvent) => {
     event.preventDefault();
     setError(null);
-    const ok = loginAsProducer(producerEmail, producerPassword);
+    const ok = await loginAsProducer(producerEmail, producerPassword);
     if (!ok) {
-      setError("Producer email or password does not match.");
+      if (producerEmail.trim().toLowerCase() === MOCK_PRODUCER_EMAIL.toLowerCase()) {
+        setError(
+          `Demo producer password is “${MOCK_DEMO_PASSWORD}”. (STUDIO_DATABASE_SETUP_PASSWORD is only for Admin → Database setup.)`,
+        );
+      } else {
+        setError("Producer email or password does not match.");
+      }
       return;
     }
-    router.push("/producer");
+    redirectAfterSignIn("/producer");
+  };
+
+  const submitStaff = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setError(null);
+    const ok = await loginAsProducer(producerEmail, producerPassword);
+    if (!ok) {
+      setError(
+        `Use ${MOCK_PRODUCER_EMAIL} and password “${MOCK_DEMO_PASSWORD}”. (You must be on the Staff tab with those fields.)`,
+      );
+      return;
+    }
+    redirectAfterSignIn("/instructor");
+  };
+
+  const submitSignup = (event: React.FormEvent) => {
+    event.preventDefault();
+    setError(null);
+    if (!invitePreview) return;
+    const firstChild =
+      addStudentNow && childDisplayName.trim() && childScreenName.trim() && childPassword
+        ? {
+            displayName: childDisplayName.trim(),
+            screenName: childScreenName.trim(),
+            password: childPassword,
+          }
+        : undefined;
+    const result = signUp(
+      {
+        organizationName: invitePreview?.mode === "bootstrap" ? orgName.trim() : undefined,
+        parentDisplayName: parentDisplayName.trim(),
+        email: signupEmail.trim(),
+        password: signupPassword,
+      },
+      firstChild,
+      inviteToken,
+    );
+    if (!result.ok) {
+      setError(result.error);
+      return;
+    }
+    redirectAfterSignIn("/parent");
   };
 
   return (
-    <div className="rounded-3xl border border-[var(--card-border)] bg-[var(--card)] p-6 shadow-xl shadow-slate-900/[0.06] backdrop-blur-xl dark:shadow-black/40 sm:p-8">
-      <p className="text-[11px] font-bold uppercase tracking-widest text-indigo-600 dark:text-indigo-400">
-        Mock authentication
-      </p>
-      <h1 className="mt-2 text-2xl font-black tracking-tight text-slate-900 dark:text-white">Log in</h1>
-      <p className="mt-2 text-sm text-slate-600 dark:text-slate-400">
-        Three entry points: parent household email, student (family screen name), or producer studio account. Demo
-        password{" "}
-        <span className="font-mono font-semibold text-slate-800 dark:text-slate-200">{MOCK_DEMO_PASSWORD}</span>.
-        Producer demo email{" "}
-        <span className="font-mono font-semibold text-slate-800 dark:text-slate-200">{MOCK_PRODUCER_EMAIL}</span>.
-      </p>
-
-      <div className="mt-5 grid grid-cols-3 gap-1 rounded-2xl border border-slate-200/90 bg-slate-100/80 p-1 dark:border-white/10 dark:bg-slate-950/60 sm:flex sm:rounded-full">
+    <div className="w-full rounded-2xl border border-white/10 bg-slate-950/55 p-6 shadow-2xl shadow-black/40 backdrop-blur-xl sm:p-8">
+      <div className="grid grid-cols-2 gap-1 rounded-xl border border-white/10 bg-black/25 p-1">
         <button
           type="button"
           onClick={() => {
-            setTab("parent");
+            setScreen("signin");
             setError(null);
+            const next = new URLSearchParams(searchParams.toString());
+            next.delete("mode");
+            replaceLoginSearch(next);
           }}
-          className={`rounded-xl px-2 py-2 text-[11px] font-bold transition sm:flex-1 sm:rounded-full sm:text-xs ${
-            tab === "parent"
-              ? "bg-white text-indigo-700 shadow-sm dark:bg-slate-800 dark:text-indigo-300"
-              : "text-slate-600 dark:text-slate-400"
+          className={`rounded-lg px-3 py-2 text-xs font-bold transition sm:text-sm ${
+            screen === "signin"
+              ? "bg-gradient-to-r from-violet-600 to-fuchsia-600 text-white shadow-md"
+              : "text-slate-400 hover:text-white"
           }`}
         >
-          Parent
+          Sign in
         </button>
         <button
           type="button"
           onClick={() => {
-            setTab("student");
+            setScreen("signup");
             setError(null);
+            const next = new URLSearchParams(searchParams.toString());
+            next.set("mode", "signup");
+            if (isSimpleMockTestOrgEnabled()) {
+              next.set("invite", getSimpleMockTestInviteToken());
+            }
+            replaceLoginSearch(next);
           }}
-          className={`rounded-xl px-2 py-2 text-[11px] font-bold transition sm:flex-1 sm:rounded-full sm:text-xs ${
-            tab === "student"
-              ? "bg-white text-indigo-700 shadow-sm dark:bg-slate-800 dark:text-indigo-300"
-              : "text-slate-600 dark:text-slate-400"
+          className={`rounded-lg px-3 py-2 text-xs font-bold transition sm:text-sm ${
+            screen === "signup"
+              ? "bg-gradient-to-r from-violet-600 to-fuchsia-600 text-white shadow-md"
+              : "text-slate-400 hover:text-white"
           }`}
         >
-          Student
-        </button>
-        <button
-          type="button"
-          onClick={() => {
-            setTab("producer");
-            setError(null);
-          }}
-          className={`rounded-xl px-2 py-2 text-[11px] font-bold transition sm:flex-1 sm:rounded-full sm:text-xs ${
-            tab === "producer"
-              ? "bg-white text-indigo-700 shadow-sm dark:bg-slate-800 dark:text-indigo-300"
-              : "text-slate-600 dark:text-slate-400"
-          }`}
-        >
-          Producer
+          Create account
         </button>
       </div>
 
+      <p className="mt-4 text-xs leading-relaxed text-slate-400">
+        Demo password for mock sign-in:{" "}
+        <span className="font-mono font-semibold text-violet-200">{MOCK_DEMO_PASSWORD}</span>
+        {" · "}Producer demo:{" "}
+        <span className="font-mono font-semibold text-violet-200">{MOCK_PRODUCER_EMAIL}</span> + password{" "}
+        <span className="font-mono font-semibold text-violet-200">{MOCK_DEMO_PASSWORD}</span>
+        {" · "}
+        <span className="text-slate-500">
+          (<span className="font-mono">STUDIO_DATABASE_SETUP_PASSWORD</span> is only for Admin → Database setup, not
+          this login.)
+        </span>
+      </p>
+      {isSimpleMockTestOrgEnabled() ? (
+        <p className="mt-2 rounded-xl border border-emerald-400/25 bg-emerald-950/25 px-3 py-2 text-xs leading-relaxed text-emerald-100/95">
+          <strong className="text-emerald-50">Simple test org</strong> is on: every signup uses{" "}
+          <span className="font-mono text-emerald-200">{getSimpleMockTestOrgName()}</span> with invite token{" "}
+          <span className="font-mono text-emerald-200">{getSimpleMockTestInviteToken()}</span>. Rename the org with{" "}
+          <span className="font-mono">NEXT_PUBLIC_MOCK_TEST_ORG_NAME</span> in <span className="font-mono">.env.local</span>
+          , then restart dev.
+        </p>
+      ) : (
+        <p className="mt-2 text-xs leading-relaxed text-slate-500">
+          Production-style signups need an <strong className="text-slate-300">invite link</strong>. First school in an
+          empty browser: set <span className="font-mono text-violet-200/90">NEXT_PUBLIC_MOCK_ORG_BOOTSTRAP_TOKEN</span>{" "}
+          and open <span className="font-mono text-violet-200/90">/auth/login?mode=signup&amp;invite=…that token…</span>.
+          For one fixed test school, set <span className="font-mono">NEXT_PUBLIC_MOCK_USE_SIMPLE_TEST_ORG=1</span>{" "}
+          instead.
+        </p>
+      )}
+      {postLoginReturnTo ? (
+        <p className="mt-3 rounded-xl border border-violet-400/35 bg-violet-950/35 px-3 py-2 text-xs leading-relaxed text-violet-100">
+          You tried to open a page that requires sign-in first. Use your normal app login below (e.g. demo password{" "}
+          <span className="font-mono font-semibold text-violet-200">{MOCK_DEMO_PASSWORD}</span>
+          {postLoginReturnTo.includes("database-setup") ? (
+            <>
+              ). After a successful sign-in you’ll go to <span className="font-mono text-violet-200">{postLoginReturnTo}</span>{" "}
+              — that is where you type <span className="font-mono">STUDIO_DATABASE_SETUP_PASSWORD</span>, not here.
+            </>
+          ) : (
+            <>
+              ). After sign-in you’ll continue to <span className="font-mono text-violet-200">{postLoginReturnTo}</span>.
+            </>
+          )}
+        </p>
+      ) : null}
+      {process.env.NEXT_PUBLIC_ENABLE_MOCK_SUPABASE_SYNC === "1" ? (
+        <p className="mt-2 text-xs leading-relaxed text-slate-600">
+          Mock → Supabase mirror is enabled (see <span className="font-mono">MOCK_SUPABASE_SYNC_SECRET</span> + service
+          role in <span className="font-mono">.env.local</span>).
+        </p>
+      ) : null}
+
       {error && (
         <p
-          className="mt-4 rounded-xl border border-rose-200/80 bg-rose-50 px-3 py-2 text-sm font-medium text-rose-800 dark:border-rose-500/30 dark:bg-rose-950/40 dark:text-rose-200"
+          className="mt-4 rounded-xl border border-rose-400/40 bg-rose-950/50 px-3 py-2 text-sm font-medium text-rose-100"
           role="alert"
         >
           {error}
         </p>
       )}
 
-      {tab === "parent" && (
-        <form className="mt-5 space-y-4" onSubmit={submitParent}>
-          <label className="block text-sm font-semibold text-slate-800 dark:text-slate-200">
+      {screen === "signup" && !inviteToken && !isSimpleMockTestOrgEnabled() ? (
+        <div className="mt-5 space-y-3 rounded-xl border border-amber-400/25 bg-amber-950/25 px-4 py-4 text-sm text-amber-50/95">
+          <p className="font-semibold text-amber-100">Invitation required</p>
+          <p className="leading-relaxed text-amber-100/85">
+            Parent signup is only available through an invite link from someone already at your organization. Check
+            your email or message from the school, or ask a parent who already has an account to generate one from the
+            Parent app (Family).
+          </p>
+          <p className="text-xs leading-relaxed text-amber-100/70">
+            Developers: use <span className="font-mono">NEXT_PUBLIC_MOCK_ORG_BOOTSTRAP_TOKEN</span> with an empty
+            mock-auth store for the first school, or sign in as a parent and create an invite link.
+          </p>
+        </div>
+      ) : null}
+
+      {screen === "signup" && inviteToken && !invitePreview ? (
+        <div className="mt-5 space-y-2 rounded-xl border border-rose-400/30 bg-rose-950/30 px-4 py-4 text-sm text-rose-100">
+          <p className="font-semibold">This signup link is not valid</p>
+          <p className="leading-relaxed text-rose-100/90">
+            The token may be wrong, revoked, or the first-time setup token may already have been used. Ask your school
+            for a new link.
+          </p>
+        </div>
+      ) : null}
+
+      {screen === "signup" && invitePreview ? (
+        <form className="mt-5 space-y-4" onSubmit={submitSignup}>
+          {invitePreview.mode === "bootstrap" ? (
+            <label className="block text-sm font-semibold text-slate-100">
+              Organization / school name (first account)
+              <input
+                required
+                type="text"
+                value={orgName}
+                onChange={(e) => setOrgName(e.target.value)}
+                className="ui-input mt-1 w-full rounded-xl border-white/10 bg-black/30 px-3 py-2 text-sm text-white placeholder:text-slate-500"
+                placeholder="e.g. Cadenza North"
+              />
+            </label>
+          ) : (
+            <div className="rounded-xl border border-emerald-400/25 bg-emerald-950/20 px-3 py-3">
+              <p className="text-xs font-medium uppercase tracking-wide text-emerald-200/80">Joining organization</p>
+              <p className="mt-1 text-base font-semibold text-white">{invitePreview.organizationName}</p>
+            </div>
+          )}
+          <label className="block text-sm font-semibold text-slate-100">
+            Your name (parent)
+            <input
+              required
+              type="text"
+              value={parentDisplayName}
+              onChange={(e) => setParentDisplayName(e.target.value)}
+              className="ui-input mt-1 w-full rounded-xl border-white/10 bg-black/30 px-3 py-2 text-sm text-white placeholder:text-slate-500"
+              placeholder="Alex Jordan"
+            />
+          </label>
+          <label className="block text-sm font-semibold text-slate-100">
             Parent email
             <input
               required
               type="email"
               autoComplete="email"
-              value={parentEmail}
-              onChange={(e) => setParentEmail(e.target.value)}
-              className="ui-input mt-1 w-full rounded-xl px-3 py-2 text-sm"
+              value={signupEmail}
+              onChange={(e) => setSignupEmail(e.target.value)}
+              className="ui-input mt-1 w-full rounded-xl border-white/10 bg-black/30 px-3 py-2 text-sm text-white placeholder:text-slate-500"
             />
           </label>
-          <label className="block text-sm font-semibold text-slate-800 dark:text-slate-200">
+          <label className="block text-sm font-semibold text-slate-100">
             Password
             <input
               required
               type="password"
-              autoComplete="current-password"
-              value={parentPassword}
-              onChange={(e) => setParentPassword(e.target.value)}
-              className="ui-input mt-1 w-full rounded-xl px-3 py-2 text-sm"
+              autoComplete="new-password"
+              value={signupPassword}
+              onChange={(e) => setSignupPassword(e.target.value)}
+              className="ui-input mt-1 w-full rounded-xl border-white/10 bg-black/30 px-3 py-2 text-sm text-white placeholder:text-slate-500"
             />
           </label>
+
+          <label className="flex cursor-pointer items-center gap-2 text-sm text-slate-200">
+            <input
+              type="checkbox"
+              checked={addStudentNow}
+              onChange={(e) => setAddStudentNow(e.target.checked)}
+              className="accent-violet-500"
+            />
+            Add a student profile now (recommended for testing)
+          </label>
+
+          {addStudentNow && (
+            <div className="space-y-3 rounded-xl border border-white/10 bg-black/20 p-3">
+              <label className="block text-sm font-semibold text-slate-100">
+                Student display name
+                <input
+                  required={addStudentNow}
+                  type="text"
+                  value={childDisplayName}
+                  onChange={(e) => setChildDisplayName(e.target.value)}
+                  className="ui-input mt-1 w-full rounded-xl border-white/10 bg-black/30 px-3 py-2 text-sm text-white placeholder:text-slate-500"
+                  placeholder="Jamie Jordan"
+                />
+              </label>
+              <label className="block text-sm font-semibold text-slate-100">
+                Screen name (login)
+                <input
+                  required={addStudentNow}
+                  type="text"
+                  autoComplete="nickname"
+                  value={childScreenName}
+                  onChange={(e) => setChildScreenName(e.target.value)}
+                  className="ui-input mt-1 w-full rounded-xl border-white/10 bg-black/30 px-3 py-2 text-sm text-white placeholder:text-slate-500"
+                  placeholder="jamie"
+                />
+              </label>
+              <label className="block text-sm font-semibold text-slate-100">
+                Student password
+                <input
+                  required={addStudentNow}
+                  type="password"
+                  autoComplete="new-password"
+                  value={childPassword}
+                  onChange={(e) => setChildPassword(e.target.value)}
+                  className="ui-input mt-1 w-full rounded-xl border-white/10 bg-black/30 px-3 py-2 text-sm text-white placeholder:text-slate-500"
+                />
+              </label>
+            </div>
+          )}
+
           <button
             type="submit"
-            className="ui-button-primary w-full rounded-xl py-2.5 text-sm font-bold shadow-md"
+            className="w-full rounded-xl bg-gradient-to-r from-violet-600 to-fuchsia-600 py-3 text-sm font-bold text-white shadow-lg shadow-violet-900/40 transition hover:brightness-110"
           >
-            Continue to parent view
+            Create account & continue
           </button>
         </form>
+      ) : null}
+
+      {screen === "signin" && (
+        <>
+          <div className="mt-5 grid grid-cols-2 gap-1 rounded-xl border border-white/10 bg-black/25 p-1 sm:grid-cols-4">
+            {(
+              [
+                ["parent", "Parent"],
+                ["student", "Student"],
+                ["producer", "Producer"],
+                ["staff", "Staff"],
+              ] as const
+            ).map(([id, label]) => (
+              <button
+                key={id}
+                type="button"
+                onClick={() => {
+                  setSignInTab(id);
+                  setError(null);
+                }}
+                className={`rounded-lg px-2 py-2 text-[10px] font-bold transition sm:text-xs ${
+                  signInTab === id
+                    ? "bg-white/10 text-white ring-1 ring-violet-400/50"
+                    : "text-slate-400 hover:text-white"
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+
+          {signInTab === "parent" && (
+            <form className="mt-5 space-y-4" onSubmit={submitParent}>
+              <label className="block text-sm font-semibold text-slate-100">
+                Parent email
+                <input
+                  required
+                  type="email"
+                  autoComplete="email"
+                  value={parentEmail}
+                  onChange={(e) => setParentEmail(e.target.value)}
+                  className="ui-input mt-1 w-full rounded-xl border-white/10 bg-black/30 px-3 py-2 text-sm text-white placeholder:text-slate-500"
+                />
+              </label>
+              <label className="block text-sm font-semibold text-slate-100">
+                Password
+                <input
+                  required
+                  type="password"
+                  autoComplete="current-password"
+                  value={parentPassword}
+                  onChange={(e) => setParentPassword(e.target.value)}
+                  className="ui-input mt-1 w-full rounded-xl border-white/10 bg-black/30 px-3 py-2 text-sm text-white placeholder:text-slate-500"
+                />
+              </label>
+              <button
+                type="submit"
+                className="w-full rounded-xl bg-gradient-to-r from-violet-600 to-fuchsia-600 py-3 text-sm font-bold text-white shadow-lg shadow-violet-900/40"
+              >
+                Continue to parent home
+              </button>
+            </form>
+          )}
+
+          {signInTab === "student" && (
+            <form className="mt-5 space-y-4" onSubmit={submitFamily}>
+              <label className="block text-sm font-semibold text-slate-100">
+                Parent account email
+                <input
+                  required
+                  type="email"
+                  autoComplete="username"
+                  value={familyParentEmail}
+                  onChange={(e) => setFamilyParentEmail(e.target.value)}
+                  className="ui-input mt-1 w-full rounded-xl border-white/10 bg-black/30 px-3 py-2 text-sm text-white placeholder:text-slate-500"
+                />
+              </label>
+              <label className="block text-sm font-semibold text-slate-100">
+                Screen name
+                <input
+                  required
+                  type="text"
+                  autoComplete="nickname"
+                  value={screenName}
+                  onChange={(e) => setScreenName(e.target.value)}
+                  className="ui-input mt-1 w-full rounded-xl border-white/10 bg-black/30 px-3 py-2 text-sm text-white placeholder:text-slate-500"
+                />
+              </label>
+              <label className="block text-sm font-semibold text-slate-100">
+                Password
+                <input
+                  required
+                  type="password"
+                  autoComplete="current-password"
+                  value={familyPassword}
+                  onChange={(e) => setFamilyPassword(e.target.value)}
+                  className="ui-input mt-1 w-full rounded-xl border-white/10 bg-black/30 px-3 py-2 text-sm text-white placeholder:text-slate-500"
+                />
+              </label>
+              <button
+                type="submit"
+                className="w-full rounded-xl bg-gradient-to-r from-violet-600 to-fuchsia-600 py-3 text-sm font-bold text-white shadow-lg shadow-violet-900/40"
+              >
+                Continue to student studio
+              </button>
+            </form>
+          )}
+
+          {signInTab === "producer" && (
+            <form className="mt-5 space-y-4" onSubmit={submitProducer}>
+              <label className="block text-sm font-semibold text-slate-100">
+                Producer email
+                <input
+                  required
+                  type="email"
+                  autoComplete="username"
+                  value={producerEmail}
+                  onChange={(e) => setProducerEmail(e.target.value)}
+                  placeholder={MOCK_PRODUCER_EMAIL}
+                  className="ui-input mt-1 w-full rounded-xl border-white/10 bg-black/30 px-3 py-2 text-sm text-white placeholder:text-slate-500"
+                />
+              </label>
+              <label className="block text-sm font-semibold text-slate-100">
+                Password
+                <input
+                  required
+                  type="password"
+                  autoComplete="current-password"
+                  value={producerPassword}
+                  onChange={(e) => setProducerPassword(e.target.value)}
+                  className="ui-input mt-1 w-full rounded-xl border-white/10 bg-black/30 px-3 py-2 text-sm text-white placeholder:text-slate-500"
+                />
+              </label>
+              <button
+                type="submit"
+                className="w-full rounded-xl bg-gradient-to-r from-violet-600 to-fuchsia-600 py-3 text-sm font-bold text-white shadow-lg shadow-violet-900/40"
+              >
+                Continue to producer workspace
+              </button>
+            </form>
+          )}
+
+          {signInTab === "staff" && (
+            <form className="mt-5 space-y-4" onSubmit={submitStaff}>
+              <p className="text-xs text-slate-400">
+                Instructor and admin views use the same studio producer demo for now. Sign in, then use the header to
+                open Admin if you need it.
+              </p>
+              <label className="block text-sm font-semibold text-slate-100">
+                Producer email
+                <input
+                  required
+                  type="email"
+                  autoComplete="username"
+                  value={producerEmail}
+                  onChange={(e) => setProducerEmail(e.target.value)}
+                  placeholder={MOCK_PRODUCER_EMAIL}
+                  className="ui-input mt-1 w-full rounded-xl border-white/10 bg-black/30 px-3 py-2 text-sm text-white placeholder:text-slate-500"
+                />
+              </label>
+              <label className="block text-sm font-semibold text-slate-100">
+                Password
+                <input
+                  required
+                  type="password"
+                  autoComplete="current-password"
+                  value={producerPassword}
+                  onChange={(e) => setProducerPassword(e.target.value)}
+                  className="ui-input mt-1 w-full rounded-xl border-white/10 bg-black/30 px-3 py-2 text-sm text-white placeholder:text-slate-500"
+                />
+              </label>
+              <button
+                type="submit"
+                className="w-full rounded-xl bg-gradient-to-r from-violet-600 to-fuchsia-600 py-3 text-sm font-bold text-white shadow-lg shadow-violet-900/40"
+              >
+                Continue to instructor view
+              </button>
+            </form>
+          )}
+        </>
       )}
 
-      {tab === "student" && (
-        <form className="mt-5 space-y-4" onSubmit={submitFamily}>
-          <label className="block text-sm font-semibold text-slate-800 dark:text-slate-200">
-            Parent account email
-            <input
-              required
-              type="email"
-              autoComplete="username"
-              value={familyParentEmail}
-              onChange={(e) => setFamilyParentEmail(e.target.value)}
-              className="ui-input mt-1 w-full rounded-xl px-3 py-2 text-sm"
-            />
-          </label>
-          <label className="block text-sm font-semibold text-slate-800 dark:text-slate-200">
-            Screen name
-            <input
-              required
-              type="text"
-              autoComplete="nickname"
-              value={screenName}
-              onChange={(e) => setScreenName(e.target.value)}
-              className="ui-input mt-1 w-full rounded-xl px-3 py-2 text-sm"
-            />
-          </label>
-          <label className="block text-sm font-semibold text-slate-800 dark:text-slate-200">
-            Password
-            <input
-              required
-              type="password"
-              autoComplete="current-password"
-              value={familyPassword}
-              onChange={(e) => setFamilyPassword(e.target.value)}
-              className="ui-input mt-1 w-full rounded-xl px-3 py-2 text-sm"
-            />
-          </label>
-          <button
-            type="submit"
-            className="ui-button-primary w-full rounded-xl py-2.5 text-sm font-bold shadow-md"
-          >
-            Continue to student view
-          </button>
-        </form>
-      )}
-
-      {tab === "producer" && (
-        <form className="mt-5 space-y-4" onSubmit={submitProducer}>
-          <label className="block text-sm font-semibold text-slate-800 dark:text-slate-200">
-            Producer email
-            <input
-              required
-              type="email"
-              autoComplete="username"
-              value={producerEmail}
-              onChange={(e) => setProducerEmail(e.target.value)}
-              placeholder={MOCK_PRODUCER_EMAIL}
-              className="ui-input mt-1 w-full rounded-xl px-3 py-2 text-sm"
-            />
-          </label>
-          <label className="block text-sm font-semibold text-slate-800 dark:text-slate-200">
-            Password
-            <input
-              required
-              type="password"
-              autoComplete="current-password"
-              value={producerPassword}
-              onChange={(e) => setProducerPassword(e.target.value)}
-              className="ui-input mt-1 w-full rounded-xl px-3 py-2 text-sm"
-            />
-          </label>
-          <button
-            type="submit"
-            className="ui-button-primary w-full rounded-xl py-2.5 text-sm font-bold shadow-md"
-          >
-            Continue to producer view
-          </button>
-        </form>
-      )}
-
-      <div className="mt-6 flex flex-col gap-2 border-t border-slate-200/80 pt-5 text-sm dark:border-white/10">
-        <Link
-          href="/auth/forgot"
-          className="font-semibold text-indigo-600 underline-offset-4 hover:underline dark:text-indigo-400"
-        >
-          Forgot parent password?
-        </Link>
-        <p className="text-slate-600 dark:text-slate-400">
-          New household?{" "}
-          <Link href="/auth/signup" className="font-bold text-indigo-600 hover:underline dark:text-indigo-400">
-            Create an account
-          </Link>
-        </p>
-        <Link href="/" className="text-xs font-medium text-slate-500 hover:text-slate-700 dark:text-slate-500 dark:hover:text-slate-300">
-          ← Back to prototype home
-        </Link>
+      <div className="mt-6 border-t border-white/10 pt-5 text-center text-xs text-slate-500">
+        {screen === "signin" ? (
+          <p>
+            New household?{" "}
+            <button
+              type="button"
+              className="font-bold text-violet-300 hover:underline"
+              onClick={() => {
+                setScreen("signup");
+                setError(null);
+                const next = new URLSearchParams(searchParams.toString());
+                next.set("mode", "signup");
+                if (isSimpleMockTestOrgEnabled()) {
+                  next.set("invite", getSimpleMockTestInviteToken());
+                }
+                replaceLoginSearch(next);
+              }}
+            >
+              Create an account
+            </button>
+          </p>
+        ) : (
+          <p>
+            Already registered?{" "}
+            <button
+              type="button"
+              className="font-bold text-violet-300 hover:underline"
+              onClick={() => {
+                setScreen("signin");
+                setError(null);
+                const next = new URLSearchParams(searchParams.toString());
+                next.delete("mode");
+                replaceLoginSearch(next);
+              }}
+            >
+              Sign in
+            </button>
+          </p>
+        )}
       </div>
     </div>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex min-h-[200px] items-center justify-center text-sm text-slate-400">Loading…</div>
+      }
+    >
+      <LoginPageInner />
+    </Suspense>
   );
 }

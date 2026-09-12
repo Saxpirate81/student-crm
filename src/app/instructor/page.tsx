@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQuickRecorder } from "@/hooks/useQuickRecorder";
 import { ExerciseCard } from "@/components/music/ExerciseCard";
 import { ExerciseStaffComposer } from "@/components/music/ExerciseStaffComposer";
@@ -23,12 +23,22 @@ import {
 import { INSTRUMENT_OPTIONS } from "@/lib/music/notation";
 import { parseYouTubeVideoId, youTubeEmbedUrl, youTubeThumbUrl } from "@/lib/youtube";
 import { useRepository } from "@/lib/useRepository";
-import { useRotatingHeroHeadline } from "@/hooks/useRotatingHeroHeadline";
+import { useRotatingHeroGreeting } from "@/hooks/useRotatingHeroHeadline";
 import { useCadenzaTheme } from "@/hooks/useCadenzaTheme";
+import { CadenzaLogOutButton } from "@/components/cadenza/CadenzaLogOutButton";
 import { GamifiedRewardTrack } from "@/components/gamification/GamifiedRewardTrack";
 import { getPracticeTotalSeconds, PRACTICE_TOTAL_UPDATED_EVENT } from "@/lib/practice-total";
 import { MOCK_USER_KEYS } from "@/lib/data/repository";
+import {
+  CADENZA_SELECTED_STUDENT_KEY,
+  readStoredRosterId,
+  useKeepRosterSelection,
+  writeStoredRosterId,
+} from "@/hooks/useKeepRosterSelection";
+import { StudioSchedule } from "@/components/schedule/StudioSchedule";
+import { studentOptionLabel } from "@/lib/ops-roster/households";
 
+const INSTRUCTOR_STORAGE_KEY = "cadenza-selected-instructor";
 const FALLBACK_VIDEO = "https://www.w3schools.com/html/mov_bbb.mp4";
 const FALLBACK_POSTER =
   "https://peach.blender.org/wp-content/uploads/title_anouncement.jpg?x11217";
@@ -159,11 +169,21 @@ function InstructorVideoCard({
 
 export default function InstructorPage() {
   const pathname = usePathname();
-  const { repository, refresh } = useRepository();
+  const { repository, version, refresh, loading, error, rosterMeta, instructors, schedule } = useRepository();
   const { theme, toggleTheme } = useCadenzaTheme();
   const [page, setPage] = useState<InstructorPageId>("dashboard");
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const [studentCrmId, setStudentCrmId] = useState("crm-alex");
+  const [studentCrmId, setStudentCrmId] = useState(() =>
+    readStoredRosterId(CADENZA_SELECTED_STUDENT_KEY, "crm-alex"),
+  );
+  const [instructorId, setInstructorId] = useState(() => {
+    if (typeof window === "undefined") return "";
+    try {
+      return window.localStorage.getItem(INSTRUCTOR_STORAGE_KEY) ?? "";
+    } catch {
+      return "";
+    }
+  });
   const [videoTitle, setVideoTitle] = useState("");
   const [categoryId, setCategoryId] = useState("cat-milestone");
   const [showArchived, setShowArchived] = useState(false);
@@ -201,11 +221,52 @@ export default function InstructorPage() {
   const [recTitle, setRecTitle] = useState("Quick tip recording");
   const quickRec = useQuickRecorder();
 
-  const roster = repository
-    .listStudents()
-    .filter((student) => student.primaryInstructorId === "instr-morgan");
-  const instructorHeroName = "Sarah Mitchell";
-  const instructorHeadline = useRotatingHeroHeadline("instructor", instructorHeroName);
+  const allStudents = useMemo(() => {
+    void version;
+    return repository.listStudents();
+  }, [repository, version]);
+  useKeepRosterSelection(
+    loading && !instructors.length ? [] : instructors.map((instructor) => instructor.id),
+    instructorId,
+    setInstructorId,
+  );
+  const roster = useMemo(
+    () =>
+      instructorId
+        ? allStudents.filter(
+            (student) =>
+              student.primaryInstructorId === instructorId ||
+              (student.instructorIds ?? []).includes(instructorId),
+          )
+        : allStudents,
+    [allStudents, instructorId],
+  );
+  useKeepRosterSelection(
+    loading && !roster.length ? [] : roster.map((student) => student.crmId),
+    studentCrmId,
+    setStudentCrmId,
+  );
+  useEffect(() => {
+    if (!instructorId) return;
+    try {
+      window.localStorage.setItem(INSTRUCTOR_STORAGE_KEY, instructorId);
+    } catch {
+      /* ignore */
+    }
+  }, [instructorId]);
+  useEffect(() => {
+    writeStoredRosterId(CADENZA_SELECTED_STUDENT_KEY, studentCrmId);
+  }, [studentCrmId]);
+  const selectedInstructor = instructors.find((instructor) => instructor.id === instructorId);
+  const instructorBlocks = useMemo(
+    () => (instructorId ? schedule.filter((block) => block.instructorId === instructorId) : []),
+    [instructorId, schedule],
+  );
+  const instructorHeroName = selectedInstructor?.name || "Instructor";
+  const { name: instructorFirstName, phrase: instructorPhrase } = useRotatingHeroGreeting(
+    "instructor",
+    instructorHeroName,
+  );
   const selectedStudent = repository.getStudent(studentCrmId) ?? roster[0];
   const videos = repository.listVideosForStudent(studentCrmId, { includeArchived: showArchived });
   const activeVideos = repository.listVideosForStudent(studentCrmId);
@@ -416,12 +477,13 @@ export default function InstructorPage() {
             <span className="toggle-lbl">{theme === "dark" ? "Dark" : "Light"}</span>
           </button>
           <div className="su-inner">
-            <div className="su-avatar">SM</div>
+            <div className="su-avatar">{initials(instructorHeroName)}</div>
             <div className="min-w-0">
-              <div className="su-name">Sarah Mitchell</div>
-              <div className="su-role">Piano Instructor</div>
+              <div className="su-name">{instructorHeroName}</div>
+              <div className="su-role">{roster.length} students</div>
             </div>
           </div>
+          <CadenzaLogOutButton />
         </div>
       </aside>
 
@@ -448,24 +510,56 @@ export default function InstructorPage() {
         <div className="content">
           {page === "dashboard" ? (
             <>
-              <section className="studio-hero instructor-hero">
-                <div>
+              <section className="studio-hero instructor-hero studio-hero--dashboard">
+                <div className="hero-identity">
                   <p className="card-title">Instructor command center</p>
-                  <h1>{instructorHeadline}</h1>
+                  <h1>{instructorFirstName}</h1>
+                  <p className="hero-phrase">{instructorPhrase}</p>
                 </div>
-                <label className="profile-select">
-                  Student
-                  <select value={studentCrmId} onChange={(event) => setStudentCrmId(event.target.value)}>
-                    {roster.map((student) => (
-                      <option key={student.crmId} value={student.crmId}>
-                        {student.displayName}
-                      </option>
-                    ))}
-                  </select>
-                </label>
+                <div className="hero-messages">
+                  <CadenzaMessageBoard viewerRole="instructor" variant="hero" />
+                </div>
+                <div className="hero-selects">
+                  <label className="profile-select">
+                    Instructor
+                    {loading ? " (loading…)" : rosterMeta ? ` (${rosterMeta.instructorCount ?? instructors.length})` : ""}
+                    <select value={instructorId} onChange={(event) => setInstructorId(event.target.value)}>
+                      {instructors.map((instructor) => (
+                        <option key={instructor.id} value={instructor.id}>
+                          {instructor.name} · {instructor.studentCount}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="profile-select">
+                    Student
+                    {loading ? "" : ` (${roster.length})`}
+                    <select value={studentCrmId} onChange={(event) => setStudentCrmId(event.target.value)}>
+                      {roster.map((student) => (
+                        <option key={student.crmId} value={student.crmId}>
+                          {studentOptionLabel(student, instructorId)}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
               </section>
+              {error ? (
+                <p className="mb-3 rounded-xl border border-red-500/30 bg-red-950/40 px-3 py-2 text-sm text-red-200">
+                  Live roster: {error}
+                </p>
+              ) : null}
 
-              <CadenzaMessageBoard viewerRole="instructor" />
+              <StudioSchedule
+                blocks={instructorBlocks}
+                selectedId={studentCrmId}
+                emptyLabel="No lessons on this instructor's schedule."
+                onBlockClick={(block) => {
+                  if (block.kind !== "lesson") return;
+                  setStudentCrmId(block.studentId);
+                  setPage("dashboard");
+                }}
+              />
 
               <GamifiedRewardTrack
                 eyebrow="Studio momentum"
@@ -501,7 +595,7 @@ export default function InstructorPage() {
                 <select value={studentCrmId} onChange={(event) => setStudentCrmId(event.target.value)}>
                   {roster.map((student) => (
                     <option key={student.crmId} value={student.crmId}>
-                      {student.displayName}
+                      {studentOptionLabel(student, instructorId)}
                     </option>
                   ))}
                 </select>
@@ -552,7 +646,7 @@ export default function InstructorPage() {
                     <span className="form-lbl">Student</span>
                     <select className="inp" value={studentCrmId} onChange={(event) => setStudentCrmId(event.target.value)}>
                       {roster.map((student) => (
-                        <option key={student.crmId} value={student.crmId}>{student.displayName}</option>
+                        <option key={student.crmId} value={student.crmId}>{studentOptionLabel(student, instructorId)}</option>
                       ))}
                     </select>
                   </label>

@@ -26,12 +26,22 @@ export type MediaCategory = {
   label: string;
 };
 
+export type StudentService = {
+  instructorId: string;
+  instructorName: string;
+  labels: string[];
+};
+
 export type StudentProfile = {
   crmId: string;
   displayName: string;
   primaryInstructorId: string;
+  instructorIds?: string[];
   parentCrmId: string;
+  parentDisplayName?: string;
+  parentEmail?: string;
   enrolledPrograms: ProgramType[];
+  services?: StudentService[];
   ageBand?: "under10" | "10to12" | "13to18" | "adult";
 };
 

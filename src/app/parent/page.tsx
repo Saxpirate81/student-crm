@@ -8,11 +8,14 @@ import { VideoCard } from "@/components/VideoCard";
 import { CadenzaMessageBoard } from "@/components/messaging/CadenzaMessageBoard";
 import { GamifiedRewardTrack } from "@/components/gamification/GamifiedRewardTrack";
 import { MOCK_DEMO_PASSWORD } from "@/lib/auth/constants";
-import { getAccountDetailsForParent } from "@/lib/auth/mock-auth-store";
+import type { MockSessionParent } from "@/lib/auth/types";
+import { createParentInviteForSession, getAccountDetailsForParent } from "@/lib/auth/mock-auth-store";
 import { useAuth } from "@/lib/auth/auth-context";
 import { useRepository } from "@/lib/useRepository";
 import { useRotatingHeroHeadline } from "@/hooks/useRotatingHeroHeadline";
 import { useCadenzaTheme } from "@/hooks/useCadenzaTheme";
+import { CadenzaLogOutButton } from "@/components/cadenza/CadenzaLogOutButton";
+import { useKeepRosterSelection } from "@/hooks/useKeepRosterSelection";
 
 type ParentPageId = "dashboard" | "family" | "videos";
 
@@ -67,7 +70,7 @@ function initials(name: string) {
 export default function ParentPage() {
   const pathname = usePathname();
   const { session, ready, addChild, resetChildPassword } = useAuth();
-  const { repository, refresh, version } = useRepository();
+  const { repository, refresh, version, loading, error, rosterMeta } = useRepository();
   const { theme, toggleTheme } = useCadenzaTheme();
   const [page, setPage] = useState<ParentPageId>("dashboard");
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -81,14 +84,36 @@ export default function ParentPage() {
 
   const children = useMemo(() => {
     void version;
-    return repository.listStudents().filter((student) => student.parentCrmId === effectiveParentCrmId);
-  }, [repository, effectiveParentCrmId, version]);
+    const all = repository.listStudents();
+    if (session?.kind === "parent") {
+      const email = session.email.trim().toLowerCase();
+      const byEmail = all.filter((student) => (student.parentEmail ?? "").toLowerCase() === email);
+      if (byEmail.length) return byEmail;
+    }
+    return all.filter((student) => student.parentCrmId === effectiveParentCrmId);
+  }, [repository, effectiveParentCrmId, session, version]);
 
-  const fixtureParentIds = useMemo(() => {
+  const households = useMemo(() => {
     void version;
-    const ids = new Set(repository.listStudents().map((s) => s.parentCrmId));
-    return [...ids].sort();
+    const grouped = new Map<string, { id: string; label: string; count: number }>();
+    for (const student of repository.listStudents()) {
+      const current = grouped.get(student.parentCrmId) ?? {
+        id: student.parentCrmId,
+        label: student.parentDisplayName || student.parentEmail || student.parentCrmId,
+        count: 0,
+      };
+      current.count += 1;
+      if (student.parentDisplayName) current.label = student.parentDisplayName;
+      grouped.set(student.parentCrmId, current);
+    }
+    return [...grouped.values()].sort((a, b) => a.label.localeCompare(b.label));
   }, [repository, version]);
+
+  useKeepRosterSelection(
+    households.map((household) => household.id),
+    parentCrmId,
+    setParentCrmId,
+  );
 
   useEffect(() => {
     if (!children.length) {
@@ -195,6 +220,7 @@ export default function ParentPage() {
               <div className="su-role">{session?.kind === "parent" ? session.email : effectiveParentCrmId}</div>
             </div>
           </div>
+          <CadenzaLogOutButton />
         </div>
       </aside>
 
@@ -228,19 +254,22 @@ export default function ParentPage() {
                 ) : (
                   <label className="profile-select">
                     Parent profile
+                    {loading ? " (loading…)" : rosterMeta ? ` (${rosterMeta.householdCount} households)` : ""}
                     <select value={parentCrmId} onChange={(event) => setParentCrmId(event.target.value)}>
-                      {fixtureParentIds.map((id) => {
-                        const labelStudent = repository.listStudents().find((s) => s.parentCrmId === id);
-                        return (
-                          <option key={id} value={id}>
-                            {labelStudent ? `${labelStudent.displayName.split(" ")[0]}'s parent (${id})` : id}
-                          </option>
-                        );
-                      })}
+                      {households.map((household) => (
+                        <option key={household.id} value={household.id}>
+                          {household.label} · {household.count} student{household.count === 1 ? "" : "s"}
+                        </option>
+                      ))}
                     </select>
                   </label>
                 )}
               </section>
+              {error ? (
+                <p className="mb-3 rounded-xl border border-red-500/30 bg-red-950/40 px-3 py-2 text-sm text-red-200">
+                  Live roster: {error}
+                </p>
+              ) : null}
 
               <CadenzaMessageBoard viewerRole="parent" />
 
@@ -279,8 +308,9 @@ export default function ParentPage() {
               {!ready || session?.kind !== "parent" ? (
                 <section className="card">
                   <div className="section-sub">
-                    Demo mode: pick a fixture parent, or <Link href="/auth/signup">sign up</Link> /{" "}
-                    <Link href="/auth/login">log in</Link> for a mock household.
+                    Demo mode: pick a fixture parent, or <Link href="/auth/login">log in</Link>. New parent accounts
+                    need an invite link from <strong>Parent → Family → Invite another parent</strong> (or a dev
+                    bootstrap URL — see the login page).
                   </div>
                 </section>
               ) : null}
@@ -325,6 +355,20 @@ export default function ParentPage() {
                     <Metric label="Parent id" value={accountDetails.parentRow?.id ?? "—"} sub="Internal id" tone="cyan" />
                     <Metric label="Parent CRM" value={session.parentCrmId} sub="CRM id" tone="green" />
                   </dl>
+                </section>
+              ) : null}
+
+              {session?.kind === "parent" ? (
+                <section className="card">
+                  <div className="card-header">
+                    <div>
+                      <div className="card-title">Invite another parent</div>
+                      <div className="section-sub">
+                        Creates a reusable signup link for the same organization (mock data in this browser only).
+                      </div>
+                    </div>
+                  </div>
+                  <ParentInviteGenerator session={session} />
                 </section>
               ) : null}
 
@@ -402,6 +446,51 @@ export default function ParentPage() {
           ) : null}
         </div>
       </main>
+    </div>
+  );
+}
+
+function ParentInviteGenerator({ session }: { session: MockSessionParent }) {
+  const [inviteUrl, setInviteUrl] = useState<string | null>(null);
+  const [copyMsg, setCopyMsg] = useState<string | null>(null);
+
+  const generate = () => {
+    setCopyMsg(null);
+    const result = createParentInviteForSession(session);
+    if (!result.ok) {
+      setInviteUrl(null);
+      setCopyMsg(result.error);
+      return;
+    }
+    const url = `${window.location.origin}/auth/login?mode=signup&invite=${encodeURIComponent(result.token)}`;
+    setInviteUrl(url);
+  };
+
+  const copy = async () => {
+    if (!inviteUrl) return;
+    try {
+      await navigator.clipboard.writeText(inviteUrl);
+      setCopyMsg("Link copied.");
+    } catch {
+      setCopyMsg("Could not copy — select the link and copy manually.");
+    }
+  };
+
+  return (
+    <div className="space-y-3">
+      <button type="button" className="btn btn-primary" onClick={generate}>
+        Generate invite link
+      </button>
+      {inviteUrl ? (
+        <div className="rounded-lg border border-white/10 bg-black/20 p-3">
+          <p className="text-xs text-slate-400">Share this URL</p>
+          <p className="break-all font-mono text-xs text-white">{inviteUrl}</p>
+          <button type="button" className="btn btn-ghost mt-2" onClick={copy}>
+            Copy to clipboard
+          </button>
+        </div>
+      ) : null}
+      {copyMsg ? <p className="text-sm text-slate-400">{copyMsg}</p> : null}
     </div>
   );
 }

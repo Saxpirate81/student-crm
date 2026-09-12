@@ -1,12 +1,15 @@
 "use client";
 
+import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { VideoCard } from "@/components/VideoCard";
 import { CadenzaMessageBoard } from "@/components/messaging/CadenzaMessageBoard";
 import { useRepository } from "@/lib/useRepository";
 import { useRotatingHeroHeadline } from "@/hooks/useRotatingHeroHeadline";
 import { useCadenzaTheme } from "@/hooks/useCadenzaTheme";
+import { CadenzaLogOutButton } from "@/components/cadenza/CadenzaLogOutButton";
+import { useKeepRosterSelection } from "@/hooks/useKeepRosterSelection";
 
 const FALLBACK_VIDEO = "https://www.w3schools.com/html/mov_bbb.mp4";
 const FALLBACK_POSTER =
@@ -54,7 +57,7 @@ function StudioIcon({ icon, className = "" }: { icon: keyof typeof icons; classN
 
 export default function AdminPage() {
   const pathname = usePathname();
-  const { repository, refresh } = useRepository();
+  const { repository, refresh, version } = useRepository();
   const { theme, toggleTheme } = useCadenzaTheme();
   const [page, setPage] = useState<AdminPageId>("dashboard");
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -66,7 +69,15 @@ export default function AdminPage() {
   const videos = repository.listVideosForStudent(studentCrmId, {
     includeArchived: showArchived,
   });
-  const students = repository.listStudents();
+  const students = useMemo(() => {
+    void version;
+    return repository.listStudents();
+  }, [repository, version]);
+  useKeepRosterSelection(
+    students.map((student) => student.crmId),
+    studentCrmId,
+    setStudentCrmId,
+  );
   const categories = repository.listCategories();
   const studentName = students.find((student) => student.crmId === studentCrmId)?.displayName ?? "Student";
   const adminHeadline = useRotatingHeroHeadline("admin", "Admin");
@@ -151,6 +162,7 @@ export default function AdminPage() {
               <div className="su-role">Mock command center</div>
             </div>
           </div>
+          <CadenzaLogOutButton />
         </div>
       </aside>
 
@@ -194,6 +206,20 @@ export default function AdminPage() {
                 </label>
               </section>
               <CadenzaMessageBoard viewerRole="admin" />
+              <section className="card">
+                <div className="card-header">
+                  <div>
+                    <div className="card-title">Real database (Supabase)</div>
+                    <div className="section-sub">
+                      Create your school, then add parents, students, and instructors — saved directly to Supabase, not
+                      mock browser storage.
+                    </div>
+                  </div>
+                </div>
+                <Link href="/admin/database-setup" className="btn btn-primary">
+                  Open database setup
+                </Link>
+              </section>
               <section className="grid4">
                 <Metric label="Visible" value={`${videos.length}`} sub="Current filter" tone="cyan" />
                 <Metric label="Active" value={`${activeVideos.length}`} sub="Not archived" tone="green" />

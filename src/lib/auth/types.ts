@@ -36,11 +36,21 @@ export type MockPasswordResetToken = {
   consumedAt: string | null;
 };
 
+/** Parent-to-parent invite link token (mock localStorage). */
+export type MockParentInvite = {
+  token: string;
+  organizationId: string;
+  createdByParentId: string;
+  createdAt: string;
+  revokedAt: string | null;
+};
+
 export type MockAuthBundle = {
   organizations: MockOrganization[];
   parents: MockParent[];
   children: MockChild[];
   resetTokens: MockPasswordResetToken[];
+  parentInvites: MockParentInvite[];
 };
 
 export type MockSessionParent = {

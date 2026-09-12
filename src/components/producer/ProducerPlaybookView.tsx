@@ -16,6 +16,28 @@ type RuleDraft = Omit<ProducerPlaybookRule, "ruleId">;
 const TRACKS: LearningTrack[] = ["All", "Kids", "Teens", "Adults", "Cross-Trainer"];
 const JOURNEY_TRACKS: Exclude<LearningTrack, "All">[] = ["Kids", "Teens", "Adults", "Cross-Trainer"];
 
+function parseRuleTracks(value: string): LearningTrack[] {
+  if (!value?.trim()) return ["All"];
+  const parsed = value
+    .split(",")
+    .map((token) => token.trim())
+    .filter((token): token is LearningTrack => TRACKS.includes(token as LearningTrack));
+  if (!parsed.length) return ["All"];
+  if (parsed.includes("All")) return ["All"];
+  return [...new Set(parsed)];
+}
+
+function stringifyRuleTracks(tracks: LearningTrack[]) {
+  if (!tracks.length || tracks.includes("All")) return "All";
+  return tracks.join(", ");
+}
+
+function trackApplies(ruleTrack: string, target: LearningTrack) {
+  if (target === "All") return true;
+  const tokens = parseRuleTracks(ruleTrack);
+  return tokens.includes("All") || tokens.includes(target);
+}
+
 const emptyDraft: RuleDraft = {
   playbookVersion: "Current",
   learningTrack: "All",
@@ -36,6 +58,7 @@ type ProducerPlaybookViewProps = {
   playbookVersion: PlaybookVersion;
   setPlaybookVersion: Dispatch<SetStateAction<PlaybookVersion>>;
   playbookVersions: PlaybookVersion[];
+  reloadWorkspace: () => Promise<void>;
 };
 
 export function ProducerPlaybookView({
@@ -44,6 +67,7 @@ export function ProducerPlaybookView({
   playbookVersion,
   setPlaybookVersion,
   playbookVersions,
+  reloadWorkspace,
 }: ProducerPlaybookViewProps) {
   const [trackFilter, setTrackFilter] = useState<LearningTrack>("All");
   const [timelineTrackFilter, setTimelineTrackFilter] = useState<LearningTrack>("All");
@@ -51,11 +75,13 @@ export function ProducerPlaybookView({
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingRuleId, setEditingRuleId] = useState<string | null>(null);
   const [draft, setDraft] = useState<RuleDraft>(emptyDraft);
+  const [trackMenuOpen, setTrackMenuOpen] = useState(false);
+  const [saveNotice, setSaveNotice] = useState<string | null>(null);
 
   const filteredRules = useMemo(() => {
     return rules
       .filter((rule) => rule.playbookVersion === playbookVersion)
-      .filter((rule) => (trackFilter === "All" ? true : rule.learningTrack === trackFilter))
+      .filter((rule) => trackApplies(rule.learningTrack, trackFilter))
       .filter((rule) => rule.status !== "Archived")
       .sort((a, b) => a.targetLesson - b.targetLesson || a.taskName.localeCompare(b.taskName));
   }, [rules, playbookVersion, trackFilter]);
@@ -63,6 +89,8 @@ export function ProducerPlaybookView({
   const openNewRule = (defaults?: Partial<RuleDraft>) => {
     setEditingRuleId(null);
     setDraft({ ...emptyDraft, playbookVersion, ...defaults });
+    setTrackMenuOpen(false);
+    setSaveNotice(null);
     setIsModalOpen(true);
   };
 
@@ -81,40 +109,103 @@ export function ProducerPlaybookView({
       opsDescription: rule.opsDescription,
       status: rule.status,
     });
+    setTrackMenuOpen(false);
+    setSaveNotice(null);
     setIsModalOpen(true);
   };
 
-  const saveRule = () => {
+  const toPayload = (nextDraft: RuleDraft) => ({
+    playbookVersion: nextDraft.playbookVersion,
+    learningTrack: nextDraft.learningTrack,
+    targetLesson: nextDraft.targetLesson,
+    placement: nextDraft.placement,
+    taskName: nextDraft.taskName.trim(),
+    taskType: nextDraft.taskType,
+    executionMode: nextDraft.executionMode,
+    assignee: nextDraft.assignee,
+    teacherDescription: nextDraft.teacherDescription,
+    opsDescription: nextDraft.opsDescription,
+    status: nextDraft.status,
+  });
+
+  const saveRule = async () => {
     if (!draft.taskName.trim()) return;
+    setSaveNotice(null);
+    const payload = toPayload(draft);
+    let savedOnServer = false;
+
     if (editingRuleId) {
-      setRules((current) =>
-        current.map((rule) => (rule.ruleId === editingRuleId ? { ...rule, ...draft, taskName: draft.taskName.trim() } : rule)),
-      );
+      const response = await fetch(`/api/producer/playbook/rules/${editingRuleId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const body = (await response.json()) as { ok?: boolean };
+      savedOnServer = response.ok && body.ok !== false;
+      if (!savedOnServer) {
+        setRules((current) =>
+          current.map((rule) =>
+            rule.ruleId === editingRuleId
+              ? {
+                  ...rule,
+                  ...payload,
+                }
+              : rule,
+          ),
+        );
+      }
     } else {
-      setRules((current) => [
-        ...current,
-        {
-          ruleId: `r-${Date.now()}`,
-          ...draft,
-          taskName: draft.taskName.trim(),
-        },
-      ]);
+      const response = await fetch("/api/producer/playbook/rules", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const body = (await response.json()) as { ok?: boolean };
+      savedOnServer = response.ok && body.ok !== false;
+      if (!savedOnServer) {
+        setRules((current) => [
+          ...current,
+          {
+            ...payload,
+            ruleId: `local-${Date.now()}`,
+          },
+        ]);
+      }
     }
     setEditingRuleId(null);
     setDraft(emptyDraft);
+    setTrackMenuOpen(false);
     setIsModalOpen(false);
+    if (savedOnServer) {
+      await reloadWorkspace();
+      setSaveNotice("Saved to database.");
+    } else {
+      setSaveNotice("Saved in this browser for now. Database sync will be enabled once backend permissions are ready.");
+    }
   };
 
-  const retireCurrentPlaybook = () => {
-    const archiveName = `Archive ${new Date().toISOString().slice(0, 10)}`;
-    setRules((current) =>
-      current.map((rule) => (rule.playbookVersion === "Current" ? { ...rule, playbookVersion: archiveName } : rule)),
-    );
+  const retireCurrentPlaybook = async () => {
+    const archiveName = window.prompt("Archive name (example: Spring 2026)");
+    if (!archiveName) return;
+    const response = await fetch("/api/producer/playbook/retire-current", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ archiveName }),
+    });
+    if (!response.ok) return;
+    await reloadWorkspace();
     setPlaybookVersion(archiveName);
   };
 
-  const setRuleStatus = (ruleId: string, status: RuleStatus) => {
+  const setRuleStatus = async (ruleId: string, status: RuleStatus) => {
+    const response = await fetch(`/api/producer/playbook/rules/${ruleId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status }),
+    });
+    if (!response.ok) return;
     setRules((current) => current.map((rule) => (rule.ruleId === ruleId ? { ...rule, status } : rule)));
+    await reloadWorkspace();
   };
 
   const timelineRules = useMemo(() => {
@@ -122,7 +213,7 @@ export function ProducerPlaybookView({
       (rule) =>
         rule.playbookVersion === playbookVersion &&
         rule.status !== "Archived" &&
-        (timelineTrackFilter === "All" || rule.learningTrack === timelineTrackFilter || rule.learningTrack === "All"),
+        trackApplies(rule.learningTrack, timelineTrackFilter),
     );
   }, [rules, playbookVersion, timelineTrackFilter]);
 
@@ -131,17 +222,37 @@ export function ProducerPlaybookView({
     return Math.max(18, highest + 2);
   }, [timelineRules]);
 
-  const handleDropRule = (
+  const handleDropRule = async (
     ruleId: string,
     track: Exclude<LearningTrack, "All">,
     lesson: number,
     placement: "lesson" | "between",
   ) => {
-    setRules((current) =>
-      current.map((rule) =>
-        rule.ruleId === ruleId ? { ...rule, learningTrack: track, targetLesson: lesson, placement } : rule,
-      ),
-    );
+    const response = await fetch(`/api/producer/playbook/rules/${ruleId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ learningTrack: track, targetLesson: lesson, placement }),
+    });
+    if (!response.ok) return;
+    setRules((current) => current.map((rule) => (rule.ruleId === ruleId ? { ...rule, learningTrack: track, targetLesson: lesson, placement } : rule)));
+    await reloadWorkspace();
+  };
+
+  const selectedDraftTracks = useMemo(() => parseRuleTracks(draft.learningTrack), [draft.learningTrack]);
+
+  const toggleDraftTrack = (track: LearningTrack) => {
+    if (track === "All") {
+      setDraft((current) => ({ ...current, learningTrack: "All" }));
+      return;
+    }
+
+    const currentTracks = parseRuleTracks(draft.learningTrack).filter((token) => token !== "All");
+    const exists = currentTracks.includes(track);
+    const nextTracks = exists ? currentTracks.filter((token) => token !== track) : [...currentTracks, track];
+    setDraft((current) => ({
+      ...current,
+      learningTrack: stringifyRuleTracks(nextTracks.length ? nextTracks : ["All"]),
+    }));
   };
 
   return (
@@ -221,14 +332,18 @@ export function ProducerPlaybookView({
                     <button
                       type="button"
                       className="btn btn-sm"
-                      onClick={() => setRuleStatus(rule.ruleId, rule.status === "Active" ? "Inactive" : "Active")}
+                      onClick={() => void setRuleStatus(rule.ruleId, rule.status === "Active" ? "Inactive" : "Active")}
                     >
                       {rule.status === "Active" ? "Disable" : "Enable"}
                     </button>
                     <button
                       type="button"
                       className="ui-button-danger rounded-md px-3 py-1 text-xs font-semibold"
-                      onClick={() => setRuleStatus(rule.ruleId, "Archived")}
+                      onClick={async () => {
+                        const response = await fetch(`/api/producer/playbook/rules/${rule.ruleId}/archive`, { method: "PATCH" });
+                        if (!response.ok) return;
+                        await reloadWorkspace();
+                      }}
                     >
                       Archive
                     </button>
@@ -254,6 +369,8 @@ export function ProducerPlaybookView({
                   setEditingRuleId(null);
                   setDraft(emptyDraft);
                   setIsModalOpen(false);
+                  setTrackMenuOpen(false);
+                  setSaveNotice(null);
                 }}
               >
                 Close
@@ -270,16 +387,48 @@ export function ProducerPlaybookView({
                   ))}
                 </select>
               </label>
-              <label className="form-grp">
-                <span className="form-lbl">Track</span>
-                <select className="inp" value={draft.learningTrack} onChange={(event) => setDraft((d) => ({ ...d, learningTrack: event.target.value as LearningTrack }))}>
-                  {TRACKS.map((track) => (
-                    <option key={track} value={track}>
-                      {track}
-                    </option>
-                  ))}
-                </select>
-              </label>
+              <div className="form-grp">
+                <span className="form-lbl">Track(s)</span>
+                <div className="relative">
+                  <button
+                    type="button"
+                    className="inp flex w-full items-center justify-between"
+                    onClick={() => setTrackMenuOpen((open) => !open)}
+                  >
+                    <span className="truncate">
+                      {selectedDraftTracks.includes("All")
+                        ? "All"
+                        : selectedDraftTracks.length === 1
+                          ? selectedDraftTracks[0]
+                          : `${selectedDraftTracks.length} tracks selected`}
+                    </span>
+                    <span className="text-xs text-slate-400">{trackMenuOpen ? "▲" : "▼"}</span>
+                  </button>
+                  {trackMenuOpen ? (
+                    <div className="absolute z-20 mt-1 w-full rounded-lg border border-slate-200 bg-white p-1 shadow-xl">
+                      {TRACKS.map((track) => {
+                        const checked = selectedDraftTracks.includes("All")
+                          ? track === "All"
+                          : selectedDraftTracks.includes(track);
+                        return (
+                          <label
+                            key={track}
+                            className="flex cursor-pointer items-center gap-2 rounded-md px-3 py-2 text-sm text-slate-700 hover:bg-slate-50"
+                          >
+                            <input
+                              type="checkbox"
+                              className="h-4 w-4 accent-indigo-600"
+                              checked={checked}
+                              onChange={() => toggleDraftTrack(track)}
+                            />
+                            <span className="flex-1 text-left">{track}</span>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  ) : null}
+                </div>
+              </div>
               <label className="form-grp">
                 <span className="form-lbl">Trigger lesson</span>
                 <input
@@ -311,6 +460,7 @@ export function ProducerPlaybookView({
                   <option value="In-Room Milestone">In-Room Milestone</option>
                   <option value="Media Upload">Media Upload</option>
                   <option value="System Action">System Action</option>
+                  <option value="Admin Task">Admin Task</option>
                 </select>
               </label>
               <label className="form-grp">
@@ -348,9 +498,10 @@ export function ProducerPlaybookView({
               </label>
             </div>
             <div className="modal-acts">
-              <button type="button" className="btn btn-primary" onClick={saveRule}>
+              <button type="button" className="btn btn-primary" onClick={() => void saveRule()}>
                 Save Rule
               </button>
+              {saveNotice ? <span className="section-sub">{saveNotice}</span> : null}
             </div>
           </div>
         </div>
@@ -412,13 +563,13 @@ export function ProducerPlaybookView({
                             (rule) =>
                               rule.targetLesson === lesson &&
                               rule.placement === "lesson" &&
-                              (rule.learningTrack === track || rule.learningTrack === "All"),
+                              trackApplies(rule.learningTrack, track),
                           );
                           const betweenBucket = timelineRules.filter(
                             (rule) =>
                               rule.targetLesson === lesson &&
                               rule.placement === "between" &&
-                              (rule.learningTrack === track || rule.learningTrack === "All"),
+                              trackApplies(rule.learningTrack, track),
                           );
                           return (
                             <div key={`${track}-${lesson}`} className="flex items-start gap-2">

@@ -1,12 +1,21 @@
 import type { AppRepository } from "@/lib/data/repository";
 import { mockRepository } from "@/lib/data/mockRepository";
+import { isSupabaseDataSource } from "@/lib/config/data-source";
 
-const dataSource = process.env.NEXT_PUBLIC_DATA_SOURCE ?? "mock";
+export { isSupabaseDataSource } from "@/lib/config/data-source";
 
 export function getRepository(): AppRepository {
-  if (dataSource === "supabase") {
+  if (!isSupabaseDataSource()) {
     return mockRepository;
   }
 
-  return mockRepository;
+  if (typeof window === "undefined") {
+    return mockRepository;
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-require-imports -- sync client-only load; avoids pulling this module into the server RSC graph
+  const { supabaseRepository } = require("./supabaseRepository") as {
+    supabaseRepository: AppRepository;
+  };
+  return supabaseRepository;
 }

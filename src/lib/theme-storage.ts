@@ -1,6 +1,7 @@
-export const THEME_STORAGE_KEY = "rs-ui-theme";
-
 export type UiTheme = "light" | "dark";
+
+export const THEME_STORAGE_KEY = "rs-ui-theme-v2";
+export const DEFAULT_UI_THEME: UiTheme = "dark";
 
 export function readStoredTheme(): UiTheme | null {
   if (typeof window === "undefined") return null;

@@ -9,6 +9,34 @@ import {
   useState,
 } from "react";
 import type { MockSession } from "@/lib/auth/types";
+
+function isValidMockSession(value: unknown): value is MockSession {
+  if (!value || typeof value !== "object") return false;
+  const row = value as Record<string, unknown>;
+  if (row.kind === "parent") {
+    return (
+      typeof row.organizationId === "string" &&
+      typeof row.parentId === "string" &&
+      typeof row.parentCrmId === "string" &&
+      typeof row.email === "string" &&
+      typeof row.displayName === "string"
+    );
+  }
+  if (row.kind === "child") {
+    return (
+      typeof row.organizationId === "string" &&
+      typeof row.parentId === "string" &&
+      typeof row.childId === "string" &&
+      typeof row.parentCrmId === "string" &&
+      typeof row.studentCrmId === "string" &&
+      typeof row.screenName === "string"
+    );
+  }
+  if (row.kind === "producer") {
+    return typeof row.email === "string" && typeof row.displayName === "string";
+  }
+  return false;
+}
 import {
   addChildForParent,
   completeParentPasswordReset,
@@ -17,11 +45,14 @@ import {
   loginProducer as authenticateProducer,
   requestParentPasswordReset,
   resetChildPasswordByParent,
-  signUpParentAndOptionalChild,
+  signUpParentWithInvite,
   type SignUpChildInput,
   type SignUpParentInput,
 } from "@/lib/auth/mock-auth-store";
+import { requestMockParentSignupSync } from "@/lib/auth/mock-supabase-sync-client";
 import { advanceHeroGreetingRotation } from "@/lib/greetings/rotating-hero-greeting";
+import { isSupabaseDataSource } from "@/lib/config/data-source";
+import { getSupabaseBrowserClient, isSupabaseConfigured } from "@/lib/supabase/client";
 
 const SESSION_KEY = "real-school-mock-session-v1";
 
@@ -30,7 +61,12 @@ function readSession(): MockSession | null {
   try {
     const raw = window.sessionStorage.getItem(SESSION_KEY);
     if (!raw) return null;
-    return JSON.parse(raw) as MockSession;
+    const parsed: unknown = JSON.parse(raw);
+    if (!isValidMockSession(parsed)) {
+      window.sessionStorage.removeItem(SESSION_KEY);
+      return null;
+    }
+    return parsed;
   } catch {
     return null;
   }
@@ -45,12 +81,13 @@ function writeSession(session: MockSession | null) {
 type AuthContextValue = {
   session: MockSession | null;
   ready: boolean;
-  loginAsParent: (email: string, password: string) => boolean;
-  loginAsChild: (parentEmail: string, screenName: string, password: string) => boolean;
-  loginAsProducer: (email: string, password: string) => boolean;
+  loginAsParent: (email: string, password: string) => Promise<boolean>;
+  loginAsChild: (parentEmail: string, screenName: string, password: string) => Promise<boolean>;
+  loginAsProducer: (email: string, password: string) => Promise<boolean>;
   signUp: (
     input: SignUpParentInput,
-    firstChild?: SignUpChildInput | null,
+    firstChild: SignUpChildInput | null | undefined,
+    inviteToken: string,
   ) => { ok: true } | { ok: false; error: string };
   addChild: (input: SignUpChildInput) => { ok: true } | { ok: false; error: string };
   requestEmailReset: (email: string) => { ok: true; token: string } | { ok: false; silent: true };
@@ -70,7 +107,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setReady(true);
   }, []);
 
-  const loginAsParent = useCallback((email: string, password: string) => {
+  const loginAsParent = useCallback(async (email: string, password: string) => {
     const next = authenticateParent(email, password);
     if (!next) return false;
     advanceHeroGreetingRotation("parent");
@@ -79,7 +116,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return true;
   }, []);
 
-  const loginAsChild = useCallback((parentEmail: string, screenName: string, password: string) => {
+  const loginAsChild = useCallback(async (parentEmail: string, screenName: string, password: string) => {
     const next = authenticateChild(parentEmail, screenName, password);
     if (!next) return false;
     advanceHeroGreetingRotation("student");
@@ -88,23 +125,60 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return true;
   }, []);
 
-  const loginAsProducer = useCallback((email: string, password: string) => {
-    const next = authenticateProducer(email, password);
-    if (!next) return false;
-    advanceHeroGreetingRotation("producer");
-    setSession(next);
-    writeSession(next);
-    return true;
+  const loginAsProducer = useCallback(async (email: string, password: string) => {
+    const mockProducer = authenticateProducer(email, password);
+    if (mockProducer) {
+      advanceHeroGreetingRotation("producer");
+      setSession(mockProducer);
+      writeSession(mockProducer);
+      return true;
+    }
+
+    if (isSupabaseDataSource() && isSupabaseConfigured()) {
+      const { error } = await getSupabaseBrowserClient().auth.signInWithPassword({
+        email: email.trim().toLowerCase(),
+        password,
+      });
+      if (!error) {
+        const next: MockSession = {
+          kind: "producer",
+          email: email.trim().toLowerCase(),
+          displayName: email.includes("@") ? email.split("@")[0] : "Producer",
+        };
+        advanceHeroGreetingRotation("producer");
+        setSession(next);
+        writeSession(next);
+        return true;
+      }
+    }
+
+    return false;
   }, []);
 
-  const signUp = useCallback((input: SignUpParentInput, firstChild?: SignUpChildInput | null) => {
-    const result = signUpParentAndOptionalChild(input, firstChild);
-    if (!result.ok) return result;
-    advanceHeroGreetingRotation("parent");
-    setSession(result.session);
-    writeSession(result.session);
-    return { ok: true as const };
-  }, []);
+  const signUp = useCallback(
+    (input: SignUpParentInput, firstChild: SignUpChildInput | null | undefined, inviteToken: string) => {
+      const result = signUpParentWithInvite(inviteToken, input, firstChild);
+      if (!result.ok) return result;
+      advanceHeroGreetingRotation("parent");
+      setSession(result.session);
+      writeSession(result.session);
+      requestMockParentSignupSync({
+        mockOrganizationId: result.session.organizationId,
+        organizationName: result.organizationName,
+        createdNewOrganization: result.createdNewOrganization,
+        parent: {
+          mockParentId: result.session.parentId,
+          email: result.session.email,
+          password: input.password,
+          displayName: result.session.displayName,
+          parentCrmId: result.session.parentCrmId,
+        },
+        child: result.child,
+      });
+      return { ok: true as const };
+    },
+    [],
+  );
 
   const addChild = useCallback(
     (input: SignUpChildInput) => {
@@ -135,6 +209,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const logout = useCallback(() => {
     setSession(null);
     writeSession(null);
+    if (isSupabaseConfigured()) {
+      try {
+        void getSupabaseBrowserClient().auth.signOut();
+      } catch {
+        /* ignore — misconfigured client should not block logout */
+      }
+    }
   }, []);
 
   const value = useMemo(

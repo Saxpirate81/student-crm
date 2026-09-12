@@ -5,6 +5,7 @@ import {
   type HeroGreetingRole,
   getHeroGreetingHeadlineClient,
   getHeroGreetingHeadlineSsr,
+  phraseFromHeroHeadline,
 } from "@/lib/greetings/rotating-hero-greeting";
 
 /**
@@ -20,4 +21,9 @@ export function useRotatingHeroHeadline(role: HeroGreetingRole, displayName: str
   }, [role, displayName]);
 
   return headline;
+}
+
+export function useRotatingHeroGreeting(role: HeroGreetingRole, displayName: string) {
+  const headline = useRotatingHeroHeadline(role, displayName);
+  return phraseFromHeroHeadline(headline, displayName);
 }

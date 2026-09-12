@@ -3,12 +3,19 @@ import type {
   MockChild,
   MockOrganization,
   MockParent,
+  MockParentInvite,
   MockPasswordResetToken,
   MockSessionChild,
   MockSessionParent,
   MockSessionProducer,
 } from "@/lib/auth/types";
 import { MOCK_DEMO_PASSWORD, MOCK_PRODUCER_EMAIL } from "@/lib/auth/constants";
+import {
+  getSimpleMockTestInviteToken,
+  getSimpleMockTestOrgName,
+  isSimpleMockTestOrgEnabled,
+  MOCK_DEV_TEST_ORG_ID,
+} from "@/lib/config/mock-simple-test-org";
 import type { StudentProfile } from "@/lib/domain/types";
 import { appendMockStudent } from "@/lib/data/mockRepository";
 
@@ -39,6 +46,7 @@ function emptyBundle(): MockAuthBundle {
     parents: [],
     children: [],
     resetTokens: [],
+    parentInvites: [],
   };
 }
 
@@ -53,6 +61,7 @@ export function loadAuthBundle(): MockAuthBundle {
       parents: Array.isArray(parsed.parents) ? parsed.parents : [],
       children: Array.isArray(parsed.children) ? parsed.children : [],
       resetTokens: Array.isArray(parsed.resetTokens) ? parsed.resetTokens : [],
+      parentInvites: Array.isArray(parsed.parentInvites) ? parsed.parentInvites : [],
     };
   } catch {
     return emptyBundle();
@@ -62,6 +71,41 @@ export function loadAuthBundle(): MockAuthBundle {
 function saveAuthBundle(bundle: MockAuthBundle) {
   if (typeof window === "undefined") return;
   window.localStorage.setItem(AUTH_KEY, JSON.stringify(bundle));
+}
+
+/** Seeds one reusable org + invite for local testing (see `mock-simple-test-org` config). */
+export function ensureSimpleTestOrgInBundle(): void {
+  if (typeof window === "undefined" || !isSimpleMockTestOrgEnabled()) return;
+  const name = getSimpleMockTestOrgName();
+  const token = getSimpleMockTestInviteToken();
+  const bundle = loadAuthBundle();
+  let changed = false;
+  const existingOrg = bundle.organizations.find((o) => o.id === MOCK_DEV_TEST_ORG_ID);
+  if (!existingOrg) {
+    bundle.organizations.push({
+      id: MOCK_DEV_TEST_ORG_ID,
+      name,
+      createdAt: nowIso(),
+    });
+    changed = true;
+  } else if (existingOrg.name !== name) {
+    existingOrg.name = name;
+    changed = true;
+  }
+  const hasInvite = bundle.parentInvites.some(
+    (i) => i.token === token && !i.revokedAt && i.organizationId === MOCK_DEV_TEST_ORG_ID,
+  );
+  if (!hasInvite) {
+    bundle.parentInvites.push({
+      token,
+      organizationId: MOCK_DEV_TEST_ORG_ID,
+      createdByParentId: "__dev_seed__",
+      createdAt: nowIso(),
+      revokedAt: null,
+    });
+    changed = true;
+  }
+  if (changed) saveAuthBundle(bundle);
 }
 
 function normalizeEmail(email: string) {
@@ -107,11 +151,51 @@ function buildStudentProfile(input: {
 }
 
 export type SignUpParentInput = {
-  organizationName: string;
+  /** Required only when using `NEXT_PUBLIC_MOCK_ORG_BOOTSTRAP_TOKEN` for the first org. */
+  organizationName?: string;
   parentDisplayName: string;
   email: string;
   password: string;
 };
+
+export type InvitePreview = { mode: "bootstrap" } | { mode: "org"; organizationName: string };
+
+/** Resolves an invite token for signup UI (bootstrap vs join existing org). */
+export function previewParentInvite(token: string): InvitePreview | null {
+  ensureSimpleTestOrgInBundle();
+  const trimmed = token.trim();
+  if (!trimmed) return null;
+  const bundle = loadAuthBundle();
+  const bootstrap = process.env.NEXT_PUBLIC_MOCK_ORG_BOOTSTRAP_TOKEN?.trim();
+  if (bootstrap && trimmed === bootstrap) {
+    if (bundle.organizations.length === 0) return { mode: "bootstrap" };
+    return null;
+  }
+  const invite = bundle.parentInvites.find((i) => i.token === trimmed && !i.revokedAt);
+  if (!invite) return null;
+  const org = bundle.organizations.find((o) => o.id === invite.organizationId);
+  if (!org) return null;
+  return { mode: "org", organizationName: org.name };
+}
+
+export function createParentInviteForSession(
+  session: MockSessionParent,
+): { ok: true; token: string } | { ok: false; error: string } {
+  const bundle = loadAuthBundle();
+  const parent = bundle.parents.find((row) => row.id === session.parentId);
+  if (!parent) return { ok: false, error: "Parent record missing." };
+  const token = `inv_${randomSegment()}${randomSegment()}`;
+  const invite: MockParentInvite = {
+    token,
+    organizationId: parent.organizationId,
+    createdByParentId: parent.id,
+    createdAt: nowIso(),
+    revokedAt: null,
+  };
+  bundle.parentInvites.push(invite);
+  saveAuthBundle(bundle);
+  return { ok: true, token };
+}
 
 export type SignUpChildInput = {
   displayName: string;
@@ -119,40 +203,102 @@ export type SignUpChildInput = {
   password: string;
 };
 
+export type SignUpChildSyncMeta = {
+  mockChildId: string;
+  displayName: string;
+  screenName: string;
+  studentCrmId: string;
+};
+
 export type SignUpResult =
-  | { ok: true; session: MockSessionParent }
+  | {
+      ok: true;
+      session: MockSessionParent;
+      organizationName: string;
+      createdNewOrganization: boolean;
+      child?: SignUpChildSyncMeta;
+    }
   | { ok: false; error: string };
 
 /**
- * Creates organization + parent. Optionally creates first child with CRM profile.
+ * Invite-only parent signup (mock). Use a parent-generated `invite` URL query, or
+ * `NEXT_PUBLIC_MOCK_ORG_BOOTSTRAP_TOKEN` when there are zero organizations (first school).
  * Passwords are stored in plain text for local mock testing only.
  */
-export function signUpParentAndOptionalChild(
+export function signUpParentWithInvite(
+  inviteToken: string,
   input: SignUpParentInput,
   firstChild?: SignUpChildInput | null,
 ): SignUpResult {
+  ensureSimpleTestOrgInBundle();
   const bundle = loadAuthBundle();
   const email = normalizeEmail(input.email);
+  const trimmedInvite = inviteToken.trim();
+
+  if (!trimmedInvite) {
+    return {
+      ok: false,
+      error: "An invitation link is required. Ask your organization for an invite.",
+    };
+  }
   if (!email || !input.password) return { ok: false, error: "Email and password are required." };
   if (findParentByEmail(bundle, email)) {
     return { ok: false, error: "An account already exists for that email." };
-  }
-  if (!input.organizationName.trim()) {
-    return { ok: false, error: "Organization name is required." };
   }
   if (!input.parentDisplayName.trim()) {
     return { ok: false, error: "Your display name is required." };
   }
 
-  const org: MockOrganization = {
-    id: `org_${randomSegment()}`,
-    name: input.organizationName.trim(),
-    createdAt: nowIso(),
-  };
+  const bootstrap = process.env.NEXT_PUBLIC_MOCK_ORG_BOOTSTRAP_TOKEN?.trim();
+  const bootstrapFirstOrg =
+    Boolean(bootstrap) && trimmedInvite === bootstrap && bundle.organizations.length === 0;
+
+  if (bootstrap && trimmedInvite === bootstrap && bundle.organizations.length > 0) {
+    return {
+      ok: false,
+      error: "This first-time setup link is no longer valid. Use an invite from a parent at your school.",
+    };
+  }
+
+  let organizationId: string;
+  let orgToInsert: MockOrganization | null = null;
+
+  if (bootstrapFirstOrg) {
+    if (!input.organizationName?.trim()) {
+      return { ok: false, error: "Organization name is required for the first account." };
+    }
+    orgToInsert = {
+      id: `org_${randomSegment()}`,
+      name: input.organizationName.trim(),
+      createdAt: nowIso(),
+    };
+    organizationId = orgToInsert.id;
+  } else {
+    const invite = bundle.parentInvites.find((i) => i.token === trimmedInvite && !i.revokedAt);
+    if (!invite) {
+      return {
+        ok: false,
+        error: "Invalid or expired invitation. Ask your school to send a new signup link.",
+      };
+    }
+    const org = bundle.organizations.find((o) => o.id === invite.organizationId);
+    if (!org) {
+      return { ok: false, error: "That organization no longer exists." };
+    }
+    organizationId = org.id;
+  }
+
+  if (firstChild?.screenName?.trim() && firstChild.displayName?.trim() && firstChild.password) {
+    const sn = normalizeScreenName(firstChild.screenName);
+    if (childScreenNameTaken(bundle, organizationId, sn)) {
+      return { ok: false, error: "That screen name is already taken in this organization." };
+    }
+  }
+
   const parentCrmId = `parent-${randomSegment()}`;
   const parent: MockParent = {
     id: `par_${randomSegment()}`,
-    organizationId: org.id,
+    organizationId,
     parentCrmId,
     email,
     password: input.password,
@@ -160,18 +306,18 @@ export function signUpParentAndOptionalChild(
     createdAt: nowIso(),
   };
 
-  bundle.organizations.push(org);
+  if (orgToInsert) {
+    bundle.organizations.push(orgToInsert);
+  }
   bundle.parents.push(parent);
 
+  let childSync: SignUpChildSyncMeta | undefined;
   if (firstChild?.screenName?.trim() && firstChild.displayName?.trim() && firstChild.password) {
     const sn = normalizeScreenName(firstChild.screenName);
-    if (childScreenNameTaken(bundle, org.id, sn)) {
-      return { ok: false, error: "That screen name is already taken in this organization." };
-    }
     const studentCrmId = `crm-${randomSegment()}`;
     const child: MockChild = {
       id: `child_${randomSegment()}`,
-      organizationId: org.id,
+      organizationId,
       parentId: parent.id,
       screenName: sn,
       studentCrmId,
@@ -186,19 +332,32 @@ export function signUpParentAndOptionalChild(
         parentCrmId,
       }),
     );
+    childSync = {
+      mockChildId: child.id,
+      displayName: firstChild.displayName.trim(),
+      screenName: sn,
+      studentCrmId,
+    };
   }
 
   saveAuthBundle(bundle);
 
+  const orgRow = bundle.organizations.find((o) => o.id === organizationId);
   const session: MockSessionParent = {
     kind: "parent",
-    organizationId: org.id,
+    organizationId,
     parentId: parent.id,
     parentCrmId,
     email,
     displayName: parent.displayName,
   };
-  return { ok: true, session };
+  return {
+    ok: true,
+    session,
+    organizationName: orgRow?.name ?? "Organization",
+    createdNewOrganization: Boolean(orgToInsert),
+    child: childSync,
+  };
 }
 
 export type AddChildResult =

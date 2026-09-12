@@ -22,6 +22,7 @@ type ViewerRole = "student" | "parent" | "instructor" | "admin" | "producer";
 
 type Props = {
   viewerRole: ViewerRole;
+  variant?: "page" | "hero";
 };
 
 function audienceForRole(role: ViewerRole): MessageAudience[] {
@@ -57,7 +58,7 @@ function sourceLabel(source: MessageSource) {
   return "Internal";
 }
 
-export function CadenzaMessageBoard({ viewerRole }: Props) {
+export function CadenzaMessageBoard({ viewerRole, variant = "page" }: Props) {
   const isAdmin = viewerRole === "admin";
   const isFamilyViewer = viewerRole === "student" || viewerRole === "parent";
   const [messages, setMessages] = useState<StudioMessage[]>([]);
@@ -142,7 +143,7 @@ export function CadenzaMessageBoard({ viewerRole }: Props) {
     return () => window.clearTimeout(t);
   }, [boardPhase]);
 
-  if (boardPhase === "collapsed") {
+  if (variant !== "hero" && boardPhase === "collapsed") {
     if (composerOpen) {
       return (
         <MessageComposer
@@ -201,7 +202,7 @@ export function CadenzaMessageBoard({ viewerRole }: Props) {
     return null;
   }
 
-  if (boardPhase === "flash") {
+  if (variant !== "hero" && boardPhase === "flash") {
     return (
       <div
         className="mb-caught-up-flash"
@@ -218,7 +219,7 @@ export function CadenzaMessageBoard({ viewerRole }: Props) {
   }
 
   return (
-    <section className="message-board" aria-label="Studio message board">
+    <section className={`message-board${variant === "hero" ? " mb-hero" : ""}`} aria-label="Studio message board">
       <div className="mb-head">
         <div>
           <p className="mb-kicker">Announcements</p>
@@ -237,7 +238,7 @@ export function CadenzaMessageBoard({ viewerRole }: Props) {
               <Link className="btn btn-ghost" href={`/messages/archive?from=${viewerRole}`}>
                 Past messages
               </Link>
-              {isAdmin ? (
+              {isAdmin && variant !== "hero" ? (
                 <button className="btn btn-primary" type="button" onClick={() => setComposerOpen(true)}>
                   Add message
                 </button>
@@ -247,7 +248,20 @@ export function CadenzaMessageBoard({ viewerRole }: Props) {
         </div>
       </div>
 
-      {preview.length ? (
+      {preview.length && variant === "hero" ? (
+        <div className="mb-hero-preview">
+          {preview.slice(0, 2).map((message) => (
+            <div key={message.id} className="mb-hero-row">
+              <strong>{message.title}</strong>
+              <button type="button" className="mb-mark-one" onClick={() => void markOneRead(message.id)}>
+                Mark read
+              </button>
+            </div>
+          ))}
+        </div>
+      ) : null}
+
+      {preview.length && variant !== "hero" ? (
         <div className="mb-stack">
           {preview.map((message) => {
             const unread = !readIds.includes(message.id);

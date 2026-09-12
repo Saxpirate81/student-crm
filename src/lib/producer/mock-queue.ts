@@ -1,8 +1,9 @@
-export type ProducerTaskType = "Media Upload" | "In-Room Milestone" | "System Action";
+export type ProducerTaskType = "Media Upload" | "In-Room Milestone" | "System Action" | "Admin Task";
 export type PlaybookVersion = string;
 
 export type ProducerQueueTask = {
   taskId: string;
+  sourceRuleId?: string;
   studentName: string;
   age: number;
   instrument: string;

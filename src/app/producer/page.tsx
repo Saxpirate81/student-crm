@@ -5,18 +5,21 @@ import { useState } from "react";
 import { ProducerMatrixView } from "@/components/producer/ProducerMatrixView";
 import { ProducerPlaybookView } from "@/components/producer/ProducerPlaybookView";
 import { ProducerQueueView } from "@/components/producer/ProducerQueueView";
+import { JourneyBuilder } from "@/components/JourneyBuilder";
 import { CadenzaMessageBoard } from "@/components/messaging/CadenzaMessageBoard";
 import { useProducerWorkspace } from "@/hooks/useProducerWorkspace";
 import { useAuth } from "@/lib/auth/auth-context";
 import { useRotatingHeroHeadline } from "@/hooks/useRotatingHeroHeadline";
 import { useCadenzaTheme } from "@/hooks/useCadenzaTheme";
+import { CadenzaLogOutButton } from "@/components/cadenza/CadenzaLogOutButton";
 
-type ProducerPageId = "queue" | "playbook" | "matrix";
+type ProducerPageId = "queue" | "playbook" | "matrix" | "journey";
 
 const producerNav: Array<{ id: ProducerPageId; label: string; icon: keyof typeof icons }> = [
   { id: "queue", label: "View Queue", icon: "clip" },
   { id: "playbook", label: "View Playbook", icon: "book" },
   { id: "matrix", label: "View Matrix", icon: "users" },
+  { id: "journey", label: "Journey Builder", icon: "spark" },
 ];
 
 const appViewOptions = [
@@ -47,6 +50,12 @@ const icons = {
       <path d="M2.5 13c0-2 2-3.4 3.5-3.4S9.5 11 9.5 13M9 13c.1-1.4 1.4-2.5 2.9-2.5 1.4 0 2.6 1 2.6 2.5" />
     </>
   ),
+  spark: (
+    <>
+      <path d="M8 1.5l1.3 3.2L12.5 6 9.3 7.3 8 10.5 6.7 7.3 3.5 6l3.2-1.3z" />
+      <path d="M12.2 10.2l.8 1.8 1.8.8-1.8.8-.8 1.8-.8-1.8-1.8-.8 1.8-.8z" />
+    </>
+  ),
 };
 
 function StudioIcon({ icon, className = "" }: { icon: keyof typeof icons; className?: string }) {
@@ -63,7 +72,8 @@ export default function ProducerPage() {
   const { theme, toggleTheme } = useCadenzaTheme();
   const [page, setPage] = useState<ProducerPageId>("queue");
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const { playbookVersion, setPlaybookVersion, rules, setRules, tasks, setTasks, playbookVersions } = useProducerWorkspace();
+  const { playbookVersion, setPlaybookVersion, rules, setRules, tasks, setTasks, matrixRows, playbookVersions, reloadWorkspace } =
+    useProducerWorkspace();
 
   const producerHeroName = session?.kind === "producer" ? session.displayName : "Producer";
   const producerHeadline = useRotatingHeroHeadline("producer", producerHeroName);
@@ -72,6 +82,7 @@ export default function ProducerPage() {
     queue: "View Queue",
     playbook: "View Playbook",
     matrix: "View Matrix",
+    journey: "Journey Builder",
   };
 
   return (
@@ -130,6 +141,7 @@ export default function ProducerPage() {
               <div className="su-role">{session?.kind === "producer" ? session.email : "Scaffold Mode"}</div>
             </div>
           </div>
+          <CadenzaLogOutButton />
         </div>
       </aside>
 
@@ -167,11 +179,13 @@ export default function ProducerPage() {
 
           {page === "queue" ? (
             <ProducerQueueView
+              rules={rules}
               tasks={tasks}
               setTasks={setTasks}
               playbookVersion={playbookVersion}
               setPlaybookVersion={setPlaybookVersion}
               playbookVersions={playbookVersions}
+              reloadWorkspace={reloadWorkspace}
             />
           ) : null}
           {page === "playbook" ? (
@@ -181,17 +195,18 @@ export default function ProducerPage() {
               playbookVersion={playbookVersion}
               setPlaybookVersion={setPlaybookVersion}
               playbookVersions={playbookVersions}
+              reloadWorkspace={reloadWorkspace}
             />
           ) : null}
           {page === "matrix" ? (
             <ProducerMatrixView
-              rules={rules}
-              tasks={tasks}
+              matrixRows={matrixRows}
               playbookVersion={playbookVersion}
               setPlaybookVersion={setPlaybookVersion}
               playbookVersions={playbookVersions}
             />
           ) : null}
+          {page === "journey" ? <JourneyBuilder /> : null}
         </div>
       </main>
     </div>
