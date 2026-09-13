@@ -1,6 +1,6 @@
 import type { ScheduleBlock } from "@/lib/ops-roster/schedule";
 
-export type StudioRole = "instructor" | "student" | "parent";
+export type StudioRole = "instructor" | "student" | "parent" | "admin";
 
 export function sessionPath(role: StudioRole, block: ScheduleBlock) {
   const id = encodeURIComponent(block.id);

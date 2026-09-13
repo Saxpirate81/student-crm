@@ -201,7 +201,15 @@ async function loadOpsRosterStudents() {
 }
 
 async function loadAppCoreData() {
-  if (!isSupabaseConfigured() || state.loading) return;
+  if (state.loading) return;
+
+  if (!isSupabaseConfigured()) {
+    state.hydrated = true;
+    state.loading = false;
+    state.error = "Supabase is not configured.";
+    emitUpdate();
+    return;
+  }
 
   state.loading = true;
   state.error = null;
@@ -209,6 +217,8 @@ async function loadAppCoreData() {
 
   try {
     await loadOpsRosterStudents();
+    state.hydrated = true;
+    state.loading = false;
     emitUpdate();
 
     const supabase = getSupabaseBrowserClient().schema("app_core");
@@ -336,7 +346,7 @@ async function loadAppCoreData() {
       state.error = error instanceof Error ? error.message : "Could not load Supabase data.";
     }
   } finally {
-    state.hydrated = state.hydrated || state.students.length > 0;
+    state.hydrated = true;
     state.loading = false;
     emitUpdate();
   }
@@ -349,7 +359,7 @@ export function hydrateSupabaseRepository() {
 export function getSupabaseRepositoryStatus() {
   return {
     hydrated: state.hydrated,
-    loading: state.loading,
+    loading: state.loading || (isSupabaseDataSource() && !state.hydrated),
     error: state.error,
     rosterMeta: state.rosterMeta,
     instructors: state.instructors,

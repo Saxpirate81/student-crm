@@ -4,6 +4,15 @@ export const MOCK_DEMO_PASSWORD = "password";
 /** Fixed mock producer account email (password: {@link MOCK_DEMO_PASSWORD}). */
 export const MOCK_PRODUCER_EMAIL = "producer@realschool.mock";
 
+/** Shared tester sign-in for Cadenza QA (any role tab). */
+export const MOCK_TESTER_EMAIL = "tester@cadenza.test";
+export const MOCK_TESTER_PASSWORD = "cadenza";
+export const MOCK_TESTER_SCREEN_NAME = "tester";
+
+export function isMockTesterLogin(email: string, password: string) {
+  return email.trim().toLowerCase() === MOCK_TESTER_EMAIL && password === MOCK_TESTER_PASSWORD;
+}
+
 /**
  * Temporary developer bypass so producer + staff UI work can proceed without sign-in.
  * Keep the allowed routes narrow and remove this flag when auth testing resumes.

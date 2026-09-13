@@ -3,7 +3,7 @@
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useMemo, useState } from "react";
 import { useAuth } from "@/lib/auth/auth-context";
-import { MOCK_DEMO_PASSWORD, MOCK_PRODUCER_EMAIL } from "@/lib/auth/constants";
+import { MOCK_DEMO_PASSWORD, MOCK_PRODUCER_EMAIL, MOCK_TESTER_EMAIL, MOCK_TESTER_PASSWORD, MOCK_TESTER_SCREEN_NAME, isMockTesterLogin } from "@/lib/auth/constants";
 import { ensureSimpleTestOrgInBundle, previewParentInvite } from "@/lib/auth/mock-auth-store";
 import {
   getSimpleMockTestInviteToken,
@@ -21,15 +21,15 @@ function LoginPageInner() {
   const { loginAsParent, loginAsChild, loginAsProducer, signUp } = useAuth();
 
   const [screen, setScreen] = useState<Screen>("signin");
-  const [signInTab, setSignInTab] = useState<SignInTab>("parent");
+  const [signInTab, setSignInTab] = useState<SignInTab>("staff");
 
-  const [parentEmail, setParentEmail] = useState("");
-  const [parentPassword, setParentPassword] = useState("");
-  const [familyParentEmail, setFamilyParentEmail] = useState("");
-  const [screenName, setScreenName] = useState("");
-  const [familyPassword, setFamilyPassword] = useState("");
-  const [producerEmail, setProducerEmail] = useState("");
-  const [producerPassword, setProducerPassword] = useState("");
+  const [parentEmail, setParentEmail] = useState(MOCK_TESTER_EMAIL);
+  const [parentPassword, setParentPassword] = useState(MOCK_TESTER_PASSWORD);
+  const [familyParentEmail, setFamilyParentEmail] = useState(MOCK_TESTER_EMAIL);
+  const [screenName, setScreenName] = useState(MOCK_TESTER_SCREEN_NAME);
+  const [familyPassword, setFamilyPassword] = useState(MOCK_TESTER_PASSWORD);
+  const [producerEmail, setProducerEmail] = useState(MOCK_TESTER_EMAIL);
+  const [producerPassword, setProducerPassword] = useState(MOCK_TESTER_PASSWORD);
 
   const [orgName, setOrgName] = useState("");
   const [inviteToken, setInviteToken] = useState("");
@@ -83,6 +83,15 @@ function LoginPageInner() {
   const submitParent = async (event: React.FormEvent) => {
     event.preventDefault();
     setError(null);
+    if (isMockTesterLogin(parentEmail, parentPassword)) {
+      const ok = await loginAsProducer(parentEmail, parentPassword);
+      if (!ok) {
+        setError("Tester sign-in failed. Try Staff with the tester email and password.");
+        return;
+      }
+      redirectAfterSignIn("/parent");
+      return;
+    }
     if (parentEmail.trim().toLowerCase() === MOCK_PRODUCER_EMAIL.toLowerCase()) {
       setError(
         `“${MOCK_PRODUCER_EMAIL}” is the studio producer demo, not a parent account. Tap the Producer tab above, enter the same email, password “${MOCK_DEMO_PASSWORD}”, then Continue.`,
@@ -100,6 +109,15 @@ function LoginPageInner() {
   const submitFamily = async (event: React.FormEvent) => {
     event.preventDefault();
     setError(null);
+    if (isMockTesterLogin(familyParentEmail, familyPassword)) {
+      const ok = await loginAsProducer(familyParentEmail, familyPassword);
+      if (!ok) {
+        setError("Tester sign-in failed. Try Staff with the tester email and password.");
+        return;
+      }
+      redirectAfterSignIn("/student");
+      return;
+    }
     const ok = await loginAsChild(familyParentEmail, screenName, familyPassword);
     if (!ok) {
       setError("Check parent account email, screen name, and password.");
@@ -131,7 +149,7 @@ function LoginPageInner() {
     const ok = await loginAsProducer(producerEmail, producerPassword);
     if (!ok) {
       setError(
-        `Use ${MOCK_PRODUCER_EMAIL} and password “${MOCK_DEMO_PASSWORD}”. (You must be on the Staff tab with those fields.)`,
+        `Use ${MOCK_TESTER_EMAIL} / ${MOCK_TESTER_PASSWORD}, or ${MOCK_PRODUCER_EMAIL} / ${MOCK_DEMO_PASSWORD}.`,
       );
       return;
     }
@@ -209,17 +227,21 @@ function LoginPageInner() {
         </button>
       </div>
 
-      <p className="mt-4 text-xs leading-relaxed text-slate-400">
-        Demo password for mock sign-in:{" "}
-        <span className="font-mono font-semibold text-violet-200">{MOCK_DEMO_PASSWORD}</span>
-        {" · "}Producer demo:{" "}
-        <span className="font-mono font-semibold text-violet-200">{MOCK_PRODUCER_EMAIL}</span> + password{" "}
-        <span className="font-mono font-semibold text-violet-200">{MOCK_DEMO_PASSWORD}</span>
-        {" · "}
-        <span className="text-slate-500">
-          (<span className="font-mono">STUDIO_DATABASE_SETUP_PASSWORD</span> is only for Admin → Database setup, not
-          this login.)
+      <p className="mt-4 rounded-xl border border-violet-400/30 bg-violet-950/40 px-3 py-3 text-xs leading-relaxed text-violet-100">
+        <strong className="text-white">Tester login</strong>
+        <span className="mt-1 block font-mono text-sm font-semibold text-violet-50">
+          {MOCK_TESTER_EMAIL}
         </span>
+        <span className="font-mono text-sm font-semibold text-violet-50">password: {MOCK_TESTER_PASSWORD}</span>
+        <span className="mt-1 block text-violet-200/90">
+          Use Staff to open instructor, or Parent / Student / Producer with the same email and password. Then switch
+          views from the header.
+        </span>
+      </p>
+      <p className="mt-3 text-xs leading-relaxed text-slate-500">
+        Older producer demo still works:{" "}
+        <span className="font-mono text-slate-300">{MOCK_PRODUCER_EMAIL}</span> /{" "}
+        <span className="font-mono text-slate-300">{MOCK_DEMO_PASSWORD}</span>
       </p>
       {isSimpleMockTestOrgEnabled() ? (
         <p className="mt-2 rounded-xl border border-emerald-400/25 bg-emerald-950/25 px-3 py-2 text-xs leading-relaxed text-emerald-100/95">
@@ -523,7 +545,7 @@ function LoginPageInner() {
                   autoComplete="username"
                   value={producerEmail}
                   onChange={(e) => setProducerEmail(e.target.value)}
-                  placeholder={MOCK_PRODUCER_EMAIL}
+                  placeholder={MOCK_TESTER_EMAIL}
                   className="ui-input mt-1 w-full rounded-xl border-white/10 bg-black/30 px-3 py-2 text-sm text-white placeholder:text-slate-500"
                 />
               </label>
@@ -550,8 +572,8 @@ function LoginPageInner() {
           {signInTab === "staff" && (
             <form className="mt-5 space-y-4" onSubmit={submitStaff}>
               <p className="text-xs text-slate-400">
-                Instructor and admin views use the same studio producer demo for now. Sign in, then use the header to
-                open Admin if you need it.
+                Instructor and admin views use the tester account. Sign in, then switch views from the header if you
+                need Admin or Parent.
               </p>
               <label className="block text-sm font-semibold text-slate-100">
                 Producer email
@@ -561,7 +583,7 @@ function LoginPageInner() {
                   autoComplete="username"
                   value={producerEmail}
                   onChange={(e) => setProducerEmail(e.target.value)}
-                  placeholder={MOCK_PRODUCER_EMAIL}
+                  placeholder={MOCK_TESTER_EMAIL}
                   className="ui-input mt-1 w-full rounded-xl border-white/10 bg-black/30 px-3 py-2 text-sm text-white placeholder:text-slate-500"
                 />
               </label>

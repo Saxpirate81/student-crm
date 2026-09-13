@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useLayoutEffect, useState } from "react";
+import { useLayoutEffect, useState } from "react";
 import type { AppRepository } from "@/lib/data/repository";
 import { getRepository } from "@/lib/data";
 import { mockRepository } from "@/lib/data/mockRepository";
@@ -22,15 +22,11 @@ export function useRepository() {
 
   useLayoutEffect(() => {
     setRepository(getRepository());
-    setVersion((prev) => prev + 1);
-    if (isSupabaseDataSource()) hydrateSupabaseRepository();
-  }, []);
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
     const bump = () => setVersion((prev) => prev + 1);
     window.addEventListener("mock-repository-updated", bump);
     window.addEventListener(SUPABASE_REPOSITORY_UPDATED_EVENT, bump);
+    if (isSupabaseDataSource()) hydrateSupabaseRepository();
+    setVersion((prev) => prev + 1);
     return () => {
       window.removeEventListener("mock-repository-updated", bump);
       window.removeEventListener(SUPABASE_REPOSITORY_UPDATED_EVENT, bump);

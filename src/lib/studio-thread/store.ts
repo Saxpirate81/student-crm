@@ -1,4 +1,4 @@
-export type ThreadRole = "instructor" | "student" | "parent";
+export type ThreadRole = "instructor" | "student" | "parent" | "admin";
 
 export type ThreadAttachment = {
   name: string;

@@ -31,13 +31,14 @@ import { getPracticeTotalSeconds, PRACTICE_TOTAL_UPDATED_EVENT } from "@/lib/pra
 import { MOCK_USER_KEYS } from "@/lib/data/repository";
 import {
   CADENZA_SELECTED_STUDENT_KEY,
-  readStoredRosterId,
+  useHydratedStoredId,
   useKeepRosterSelection,
   writeStoredRosterId,
 } from "@/hooks/useKeepRosterSelection";
 import { StudioSchedule } from "@/components/schedule/StudioSchedule";
 import { studentOptionLabel } from "@/lib/ops-roster/households";
 import { sessionPath } from "@/lib/ops-roster/session-href";
+import { todayEasternIso } from "@/lib/ops-roster/time";
 
 const INSTRUCTOR_STORAGE_KEY = "cadenza-selected-instructor";
 const FALLBACK_VIDEO = "https://www.w3schools.com/html/mov_bbb.mp4";
@@ -171,21 +172,12 @@ function InstructorVideoCard({
 export default function InstructorPage() {
   const pathname = usePathname();
   const router = useRouter();
-  const { repository, version, refresh, loading, error, rosterMeta, instructors, schedule } = useRepository();
+  const { repository, version, refresh, loading, error, instructors, schedule } = useRepository();
   const { theme, toggleTheme } = useCadenzaTheme();
   const [page, setPage] = useState<InstructorPageId>("dashboard");
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const [studentCrmId, setStudentCrmId] = useState(() =>
-    readStoredRosterId(CADENZA_SELECTED_STUDENT_KEY, "crm-alex"),
-  );
-  const [instructorId, setInstructorId] = useState(() => {
-    if (typeof window === "undefined") return "";
-    try {
-      return window.localStorage.getItem(INSTRUCTOR_STORAGE_KEY) ?? "";
-    } catch {
-      return "";
-    }
-  });
+  const [studentCrmId, setStudentCrmId] = useHydratedStoredId(CADENZA_SELECTED_STUDENT_KEY, "crm-alex");
+  const [instructorId, setInstructorId] = useHydratedStoredId(INSTRUCTOR_STORAGE_KEY, "");
   const [videoTitle, setVideoTitle] = useState("");
   const [categoryId, setCategoryId] = useState("cat-milestone");
   const [showArchived, setShowArchived] = useState(false);
@@ -227,11 +219,24 @@ export default function InstructorPage() {
     void version;
     return repository.listStudents();
   }, [repository, version]);
-  useKeepRosterSelection(
-    loading && !instructors.length ? [] : instructors.map((instructor) => instructor.id),
-    instructorId,
-    setInstructorId,
-  );
+  const instructorPickIds = useMemo(() => {
+    if (loading && !instructors.length) return [];
+    const teachingToday = new Set(
+      schedule.filter((block) => block.date === todayEasternIso()).map((block) => block.instructorId),
+    );
+    return [...instructors]
+      .sort((left, right) => {
+        const leftToday = teachingToday.has(left.id) ? 0 : 1;
+        const rightToday = teachingToday.has(right.id) ? 0 : 1;
+        if (leftToday !== rightToday) return leftToday - rightToday;
+        const leftUnassigned = /unassigned/i.test(left.name) ? 1 : 0;
+        const rightUnassigned = /unassigned/i.test(right.name) ? 1 : 0;
+        if (leftUnassigned !== rightUnassigned) return leftUnassigned - rightUnassigned;
+        return right.studentCount - left.studentCount;
+      })
+      .map((instructor) => instructor.id);
+  }, [instructors, loading, schedule]);
+  useKeepRosterSelection(instructorPickIds, instructorId, setInstructorId);
   const roster = useMemo(
     () =>
       instructorId
@@ -514,7 +519,6 @@ export default function InstructorPage() {
             <>
               <section className="studio-hero instructor-hero studio-hero--dashboard">
                 <div className="hero-identity">
-                  <p className="card-title">Instructor command center</p>
                   <h1>{instructorFirstName}</h1>
                   <p className="hero-phrase">{instructorPhrase}</p>
                 </div>
@@ -523,8 +527,10 @@ export default function InstructorPage() {
                 </div>
                 <div className="hero-selects">
                   <label className="profile-select">
-                    Instructor
-                    {loading ? " (loading…)" : rosterMeta ? ` (${rosterMeta.instructorCount ?? instructors.length})` : ""}
+                    <span className="profile-select-label">
+                      Instructor
+                      <span>{loading ? "…" : instructors.length}</span>
+                    </span>
                     <select value={instructorId} onChange={(event) => setInstructorId(event.target.value)}>
                       {instructors.map((instructor) => (
                         <option key={instructor.id} value={instructor.id}>
@@ -534,8 +540,10 @@ export default function InstructorPage() {
                     </select>
                   </label>
                   <label className="profile-select">
-                    Student
-                    {loading ? "" : ` (${roster.length})`}
+                    <span className="profile-select-label">
+                      Student
+                      <span>{loading ? "…" : roster.length}</span>
+                    </span>
                     <select value={studentCrmId} onChange={(event) => setStudentCrmId(event.target.value)}>
                       {roster.map((student) => (
                         <option key={student.crmId} value={student.crmId}>
@@ -555,7 +563,7 @@ export default function InstructorPage() {
               <StudioSchedule
                 blocks={instructorBlocks}
                 selectedId={studentCrmId}
-                emptyLabel="No lessons on this instructor's schedule."
+                emptyLabel={loading ? "Loading studio schedule…" : "No lessons on this instructor's schedule."}
                 onBlockClick={(block) => {
                   router.push(sessionPath("instructor", block));
                 }}

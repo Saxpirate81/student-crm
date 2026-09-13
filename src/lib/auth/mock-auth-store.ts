@@ -9,7 +9,12 @@ import type {
   MockSessionParent,
   MockSessionProducer,
 } from "@/lib/auth/types";
-import { MOCK_DEMO_PASSWORD, MOCK_PRODUCER_EMAIL } from "@/lib/auth/constants";
+import {
+  MOCK_DEMO_PASSWORD,
+  MOCK_PRODUCER_EMAIL,
+  MOCK_TESTER_EMAIL,
+  MOCK_TESTER_PASSWORD,
+} from "@/lib/auth/constants";
 import {
   getSimpleMockTestInviteToken,
   getSimpleMockTestOrgName,
@@ -417,6 +422,13 @@ export function loginParent(email: string, password: string): MockSessionParent 
 /** Mock producer (admin) — not stored in the household auth bundle. */
 export function loginProducer(email: string, password: string): MockSessionProducer | null {
   const key = normalizeEmail(email);
+  if (key === MOCK_TESTER_EMAIL && password === MOCK_TESTER_PASSWORD) {
+    return {
+      kind: "producer",
+      email: MOCK_TESTER_EMAIL,
+      displayName: "Cadenza Tester",
+    };
+  }
   if (key !== normalizeEmail(MOCK_PRODUCER_EMAIL)) return null;
   if (password !== MOCK_DEMO_PASSWORD) return null;
   return {

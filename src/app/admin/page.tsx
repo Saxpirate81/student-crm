@@ -1,23 +1,29 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import { VideoCard } from "@/components/VideoCard";
 import { CadenzaMessageBoard } from "@/components/messaging/CadenzaMessageBoard";
+import { StaffScheduleBoard } from "@/components/schedule/StaffScheduleBoard";
+import { StudioSchedule } from "@/components/schedule/StudioSchedule";
 import { useRepository } from "@/lib/useRepository";
 import { useRotatingHeroHeadline } from "@/hooks/useRotatingHeroHeadline";
 import { useCadenzaTheme } from "@/hooks/useCadenzaTheme";
 import { CadenzaLogOutButton } from "@/components/cadenza/CadenzaLogOutButton";
 import { useKeepRosterSelection } from "@/hooks/useKeepRosterSelection";
+import { sessionPath } from "@/lib/ops-roster/session-href";
 
 const FALLBACK_VIDEO = "https://www.w3schools.com/html/mov_bbb.mp4";
 const FALLBACK_POSTER =
   "https://peach.blender.org/wp-content/uploads/title_anouncement.jpg?x11217";
 
-type AdminPageId = "dashboard" | "uploads" | "inventory";
+type AdminPageId = "dashboard" | "schedule" | "teachers" | "front-desk" | "uploads" | "inventory";
 
 const adminNav: Array<{ id: AdminPageId; label: string; icon: keyof typeof icons }> = [
+  { id: "schedule", label: "Schedule", icon: "calendar" },
+  { id: "teachers", label: "Teachers", icon: "users" },
+  { id: "front-desk", label: "Front Desk", icon: "desk" },
   { id: "dashboard", label: "Overview", icon: "grid" },
   { id: "uploads", label: "Uploads", icon: "video" },
   { id: "inventory", label: "Inventory", icon: "clip" },
@@ -33,6 +39,12 @@ const appViewOptions = [
 
 const icons = {
   grid: <path d="M1 1h6v6H1zM9 1h6v6H9zM1 9h6v6H1zM9 9h6v6H9z" />,
+  calendar: (
+    <>
+      <rect x="2" y="3" width="12" height="12" rx="1.5" />
+      <path d="M2 7h12M5 1.5v3M11 1.5v3" />
+    </>
+  ),
   clip: (
     <>
       <rect x="3" y="2" width="10" height="13" rx="1.5" />
@@ -43,6 +55,19 @@ const icons = {
     <>
       <rect x="1" y="3" width="10" height="10" rx="1.5" />
       <path d="m11 6 4-2v8l-4-2" />
+    </>
+  ),
+  users: (
+    <>
+      <circle cx="6" cy="6" r="2.2" />
+      <circle cx="11.2" cy="6.8" r="1.8" />
+      <path d="M2.5 13c0-2 2-3.4 3.5-3.4S9.5 11 9.5 13M9 13c.1-1.4 1.4-2.5 2.9-2.5 1.4 0 2.6 1 2.6 2.5" />
+    </>
+  ),
+  desk: (
+    <>
+      <path d="M2 13V7h12v6" />
+      <path d="M1 7h14M5 7V4h6v3" />
     </>
   ),
 };
@@ -57,9 +82,10 @@ function StudioIcon({ icon, className = "" }: { icon: keyof typeof icons; classN
 
 export default function AdminPage() {
   const pathname = usePathname();
-  const { repository, refresh, version } = useRepository();
+  const router = useRouter();
+  const { repository, refresh, version, schedule, loading, error } = useRepository();
   const { theme, toggleTheme } = useCadenzaTheme();
-  const [page, setPage] = useState<AdminPageId>("dashboard");
+  const [page, setPage] = useState<AdminPageId>("schedule");
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [studentCrmId, setStudentCrmId] = useState("crm-alex");
   const [title, setTitle] = useState("");
@@ -84,6 +110,9 @@ export default function AdminPage() {
   const activeVideos = repository.listVideosForStudent(studentCrmId);
 
   const pageTitle: Record<AdminPageId, string> = {
+    schedule: "Master Schedule",
+    teachers: "Teacher Schedule",
+    "front-desk": "Front Desk Schedule",
     dashboard: "Admin Dashboard",
     uploads: "Admin Upload Desk",
     inventory: "Video Inventory",
@@ -175,7 +204,7 @@ export default function AdminPage() {
           </button>
           <div className="page-title">{pageTitle[page]}</div>
           <div className="topbar-right">
-            <div className="xp-pill">{studentName} · {videos.length} videos</div>
+            <div className="xp-pill">Studio roster · {students.length}</div>
             <button className="theme-toggle" onClick={toggleTheme} type="button">
               <span className="toggle-icon">{theme === "dark" ? "Moon" : "Sun"}</span>
               <span className="toggle-track"><span className="toggle-knob" /></span>
@@ -186,7 +215,28 @@ export default function AdminPage() {
             </button>
           </div>
         </div>
-        <div className="content">
+        <div className={`content${page === "schedule" || page === "teachers" || page === "front-desk" ? " is-admin-schedule" : ""}`}>
+          {page === "schedule" ? (
+            <>
+              {error ? (
+                <p className="mb-3 rounded-xl border border-red-500/30 bg-red-950/40 px-3 py-2 text-sm text-red-200">
+                  Live roster: {error}
+                </p>
+              ) : null}
+              <StudioSchedule
+                variant="master"
+                blocks={schedule}
+                emptyLabel={loading ? "Loading studio schedule…" : "No lessons on the master schedule."}
+                onBlockClick={(block) => {
+                  router.push(sessionPath("admin", block));
+                }}
+              />
+            </>
+          ) : null}
+
+          {page === "teachers" ? <StaffScheduleBoard layer="teacher" /> : null}
+          {page === "front-desk" ? <StaffScheduleBoard layer="front-desk" /> : null}
+
           {page === "dashboard" ? (
             <>
               <section className="studio-hero instructor-hero">

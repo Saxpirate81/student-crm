@@ -37,7 +37,7 @@ import { useRotatingHeroGreeting } from "@/hooks/useRotatingHeroHeadline";
 import { PracticeGoalRing } from "@/components/student/PracticeGoalRing";
 import { AddVideoModal, type VideoAssignmentOption } from "@/components/video/AddVideoModal";
 import { GamifiedRewardTrack } from "@/components/gamification/GamifiedRewardTrack";
-import { useKeepRosterSelection, CADENZA_SELECTED_STUDENT_KEY, readStoredRosterId, writeStoredRosterId } from "@/hooks/useKeepRosterSelection";
+import { useKeepRosterSelection, CADENZA_SELECTED_STUDENT_KEY, useHydratedStoredId, writeStoredRosterId } from "@/hooks/useKeepRosterSelection";
 import { StudioSchedule } from "@/components/schedule/StudioSchedule";
 import { blockIncludesStudent } from "@/lib/ops-roster/schedule";
 import { studentOptionLabel } from "@/lib/ops-roster/households";
@@ -267,9 +267,7 @@ export function StudentStudioLayout({ children }: { children: ReactNode }) {
   const { repository, refresh, version, schedule, loading, error, rosterMeta } = useRepository();
   const { theme, toggleTheme } = useCadenzaTheme();
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const [studentCrmId, setStudentCrmId] = useState(() =>
-    readStoredRosterId(CADENZA_SELECTED_STUDENT_KEY, "crm-alex"),
-  );
+  const [studentCrmId, setStudentCrmId] = useHydratedStoredId(CADENZA_SELECTED_STUDENT_KEY, "crm-alex");
   const [practiceSeconds, setPracticeSeconds] = useState(0);
   const [storedPracticeSeconds, setStoredPracticeSeconds] = useState(0);
   const [micRetryNonce, setMicRetryNonce] = useState(0);
